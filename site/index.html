@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hemza.ma — Les vraies promos mode au Maroc</title>
+<meta name="description" content="Hemza.ma repère chaque jour les vraies baisses de prix sur la mode femme, homme et enfant au Maroc. Historique des prix, fausses promos filtrées.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FBF6EF; --card:#fff; --ink:#1E1B18; --muted:#6F665D; --line:#EADFD2;
+  --terra:#C2562B; --terra-soft:#F6E2D7; --green:#1F5E4B; --green-soft:#DDEDE6; --gold:#D8A23A;
+  --r:16px; --shadow:0 1px 2px rgba(30,27,24,.06),0 6px 20px rgba(30,27,24,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 18px}
+.demo-bar{background:var(--ink);color:#fff;font-size:12.5px;text-align:center;padding:7px 12px}
+header{position:sticky;top:0;z-index:20;background:rgba(251,246,239,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:14px;height:62px}
+.logo{font-family:Fraunces,serif;font-weight:800;font-size:26px;letter-spacing:-.5px;text-decoration:none}
+.logo span{color:var(--terra)}
+.logo small{font-family:Inter;font-weight:500;font-size:11px;color:var(--muted);margin-left:6px;letter-spacing:0}
+.search{flex:1;max-width:420px;margin-left:auto;position:relative}
+.search input{width:100%;height:40px;border-radius:999px;border:1px solid var(--line);background:#fff;padding:0 16px 0 38px;font:inherit;font-size:14px}
+.search svg{position:absolute;left:13px;top:11px;opacity:.5}
+.tg{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 16px;border-radius:999px;background:var(--green);color:#fff;text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap}
+.hero{padding:34px 0 18px}
+.hero h1{font-family:Fraunces,serif;font-size:clamp(30px,5vw,50px);line-height:1.04;margin:0 0 10px;letter-spacing:-1px;max-width:760px}
+.hero h1 em{font-style:normal;color:var(--terra)}
+.hero p{margin:0;color:var(--muted);max-width:620px;font-size:16px;line-height:1.5}
+.stats{display:flex;gap:22px;margin-top:18px;flex-wrap:wrap}
+.stat b{display:block;font-family:Fraunces,serif;font-size:24px}
+.stat span{font-size:12.5px;color:var(--muted)}
+.tabs{display:flex;gap:8px;margin:22px 0 12px;overflow-x:auto;scrollbar-width:none}
+.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:10px 18px;font:inherit;font-weight:600;font-size:14.5px;cursor:pointer;white-space:nowrap}
+.tab[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.chip{border:none;background:var(--terra-soft);color:#7A3214;border-radius:999px;padding:7px 13px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed=true]{background:var(--terra);color:#fff}
+select,.range{font:inherit;font-size:13.5px}
+select{height:36px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:0 10px}
+.range{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.range input{accent-color:var(--terra);width:120px}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);cursor:pointer}
+.toggle input{accent-color:var(--green)}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding-bottom:40px}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:transform .15s}
+.card:hover{transform:translateY(-3px)}
+.thumb{position:relative;aspect-ratio:4/5;display:grid;place-items:center}
+.thumb img,.thumb svg.art{width:100%;height:100%;object-fit:cover}
+.disc{position:absolute;top:10px;left:10px;background:var(--terra);color:#fff;font-weight:700;font-size:14px;padding:5px 9px;border-radius:9px}
+.score{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.92);font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:9px;display:flex;gap:4px;align-items:center}
+.score i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.body{padding:12px 13px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.store{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.title{font-size:14px;font-weight:500;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.prices{display:flex;align-items:baseline;gap:8px;margin-top:auto}
+.now{font-weight:700;font-size:18px}
+.was{color:var(--muted);text-decoration:line-through;font-size:13px}
+.badges{display:flex;gap:5px;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--green-soft);color:var(--green)}
+.badge.gold{background:#FBEFD5;color:#8A5D0B}
+.spark{height:26px;width:100%}
+.empty{grid-column:1/-1;text-align:center;padding:60px 0;color:var(--muted)}
+section.how{background:#fff;border-radius:22px;padding:28px;margin:10px 0 40px;box-shadow:var(--shadow)}
+.how h2{font-family:Fraunces,serif;margin:0 0 16px;font-size:26px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
+.step b{display:block;margin-bottom:4px}
+.step p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.step .n{width:30px;height:30px;border-radius:50%;background:var(--terra-soft);color:var(--terra);display:grid;place-items:center;font-weight:700;margin-bottom:8px}
+footer{border-top:1px solid var(--line);padding:24px 0 40px;color:var(--muted);font-size:13px;line-height:1.6}
+dialog{border:none;border-radius:22px;padding:0;max-width:560px;width:calc(100% - 28px);box-shadow:0 30px 80px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(30,27,24,.45)}
+.dlg{display:grid;grid-template-columns:180px 1fr;gap:0}
+.dlg .thumb{aspect-ratio:auto;min-height:230px}
+.dlg-body{padding:20px}
+.dlg h3{margin:4px 0 8px;font-size:18px;line-height:1.3}
+.close{position:absolute;top:10px;right:12px;border:none;background:#fff;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;box-shadow:var(--shadow)}
+.chart{padding:0 20px 20px}
+.chart h4{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:600}
+.cta{display:block;text-align:center;margin-top:12px;background:var(--terra);color:#fff;text-decoration:none;font-weight:700;padding:12px;border-radius:12px}
+.why{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
+@media (max-width:620px){
+  .search{display:none}.tg span{display:none}.tg{margin-left:auto}
+  .chips{flex-basis:100%}.stats{gap:16px}
+  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .now{font-size:16px}.body{padding:10px}
+  .dlg{grid-template-columns:1fr}.dlg .thumb{min-height:200px;max-height:260px}
+}
+</style>
+</head>
+<body>
+<div class="demo-bar" id="demoBar">Prototype — données de démonstration (boutiques et prix fictifs)</div>
+<header>
+  <div class="wrap top">
+    <a class="logo" href="#">hemza<span>.</span>ma<small>vraies promos mode</small></a>
+    <label class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Robe, jean, baskets, caftan…" aria-label="Rechercher">
+    </label>
+    <a class="tg" href="https://t.me/" aria-label="Rejoindre la chaîne Telegram">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21.9 4.3 18.8 19c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.3.3-.5.5-1 .5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L6.9 13 2.3 11.6c-1-.3-1-1 .2-1.5L20.6 3c.8-.3 1.6.2 1.3 1.3z"/></svg>
+      <span>Alertes Telegram</span></a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Les <em>vraies</em> promos mode au Maroc, vérifiées chaque jour.</h1>
+    <p>On suit le prix de chaque article dans le temps. Une promo n'apparaît ici que si le prix a vraiment baissé, pas seulement parce que la boutique affiche « -70% ».</p>
+    <div class="stats">
+      <div class="stat"><b id="sDeals">–</b><span>promos actives</span></div>
+      <div class="stat"><b id="sStores">–</b><span>boutiques suivies</span></div>
+      <div class="stat"><b id="sFake">–</b><span>fausses promos écartées</span></div>
+    </div>
+  </div>
+
+  <div class="tabs" role="group" aria-label="Rayon">
+    <button class="tab" data-g="all" aria-pressed="true">Tout</button>
+    <button class="tab" data-g="femme" aria-pressed="false">Femme</button>
+    <button class="tab" data-g="homme" aria-pressed="false">Homme</button>
+    <button class="tab" data-g="enfant" aria-pressed="false">Enfant</button>
+  </div>
+  <div class="filters">
+    <div class="chips" id="chips" role="group" aria-label="Catégorie"></div>
+    <label class="range">Max <input id="max" type="range" min="100" max="2000" step="50" value="2000"><output id="maxOut">2000 DH</output></label>
+    <label class="toggle"><input type="checkbox" id="low"> Prix le plus bas 90 j</label>
+    <select id="sort" aria-label="Trier">
+      <option value="score">Meilleures promos</option>
+      <option value="disc">Plus forte remise</option>
+      <option value="asc">Prix croissant</option>
+      <option value="new">Plus récentes</option>
+    </select>
+  </div>
+  <div class="meta"><span id="count"></span><span>Mis à jour il y a 2 h</span></div>
+  <div class="grid" id="grid"></div>
+
+  <section class="how">
+    <h2>Comment on repère une vraie promo</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><b>On relève les prix</b><p>Les catalogues des boutiques partenaires sont lus toutes les 6 heures et chaque prix est enregistré.</p></div>
+      <div class="step"><div class="n">2</div><b>On compare à l'historique</b><p>Le prix du jour est comparé au prix médian des 30 derniers jours, pas au « prix barré » de la boutique.</p></div>
+      <div class="step"><div class="n">3</div><b>On écarte les fausses promos</b><p>Un « -50% » dont le prix n'a jamais bougé est filtré. Seules les vraies baisses de 20% ou plus sont publiées.</p></div>
+    </div>
+  </section>
+</main>
+<footer><div class="wrap">Hemza.ma, un produit Arweb. Certains liens sont affiliés : si vous achetez, la boutique nous verse une commission, sans surcoût pour vous. Les prix peuvent changer, vérifiez sur le site de la boutique.</div></footer>
+
+<dialog id="dlg"></dialog>
+
+<script>
+/* ---------- CONFIG: set these to go live (anon key is public, read-only via RLS) ---------- */
+const SUPABASE_URL = "";   // e.g. "https://xxxx.supabase.co"
+const SUPABASE_ANON = "";
+const CATS = ["robes","traditionnel","jeans","pantalons","t-shirts","chemises","pulls","vestes","ensembles","chaussures","sacs","accessoires"];
+const CAT_LABEL = {"robes":"Robes","traditionnel":"Caftans & djellabas","jeans":"Jeans","pantalons":"Pantalons","t-shirts":"T-shirts & tops","chemises":"Chemises","pulls":"Pulls & sweats","vestes":"Vestes & manteaux","ensembles":"Ensembles","chaussures":"Chaussures","sacs":"Sacs","accessoires":"Accessoires"};
+
+/* ---------- Demo data generator (deterministic) ---------- */
+function rng(seed){return()=>{seed=(seed*16807)%2147483647;return seed/2147483647}}
+function demoData(){
+  const r=rng(42), stores=["Boutique Atlas","Maison Zellige","Kasbah Style","Rif Denim","Petit Souk Kids","Medina Shoes","Casa Avenue"];
+  const T={
+    femme:[["Robe longue satin","robes",[250,600]],["Caftan brodé main","traditionnel",[900,2000]],["Takchita deux pièces","traditionnel",[1200,2000]],["Jean mom fit","jeans",[200,450]],["Blouse en lin","chemises",[150,350]],["Cardigan maille","pulls",[180,400]],["Trench beige","vestes",[450,1100]],["Baskets blanches","chaussures",[300,700]],["Sac cabas cuir","sacs",[350,900]],["Abaya fluide","traditionnel",[300,700]],["Pantalon large","pantalons",[200,450]],["Ensemble jogging","ensembles",[250,550]]],
+    homme:[["Jean slim brut","jeans",[250,550]],["Chemise oxford","chemises",[200,450]],["Sweat à capuche","pulls",[220,480]],["Blouson aviateur","vestes",[600,1400]],["Polo piqué","t-shirts",[150,320]],["Chino stretch","pantalons",[220,480]],["Djellaba laine","traditionnel",[700,1800]],["Sneakers running","chaussures",[400,1000]],["Mocassins cuir","chaussures",[450,1100]],["Doudoune légère","vestes",[500,1200]],["Casquette brodée","accessoires",[100,220]],["Ceinture cuir","accessoires",[120,300]]],
+    enfant:[["Ensemble garçon 6 ans","ensembles",[150,320]],["Robe fille à volants","robes",[150,350]],["Jean enfant","jeans",[120,260]],["Doudoune enfant","vestes",[250,550]],["Baskets enfant lumineuses","chaussures",[180,400]],["Pyjama coton","ensembles",[100,220]],["Gandoura enfant","traditionnel",[200,450]],["Sweat imprimé","pulls",[120,250]],["Cartable 2 roues","sacs",[200,450]]]
+  };
+  const pal=["#E9C9B5","#C9DCD3","#E7D9B8","#D5CDE6","#F0D3D3","#CFE0E8","#E6E0D4"];
+  const out=[];let id=1;
+  for(const g of Object.keys(T)) for(const [t,c,[lo,hi]] of T[g]){
+    const n=1+Math.floor(r()*2);
+    for(let k=0;k<n;k++){
+      const base=Math.round((lo+r()*(hi-lo))/10)*10-1;
+      const real=r()<0.82, disc=real?0.2+r()*0.3:0;
+      const price=Math.round(base*(1-disc)/5)*5-1;
+      const hist=[];for(let d=0;d<30;d++)hist.push(Math.round(base*(1+(r()-.5)*.05)));
+      hist.push(price);
+      const claimed=real?Math.round(base*(1+r()*.25)):Math.round(base*2);
+      const pool=g==="enfant"?["Petit Souk Kids","Casa Avenue"]:c==="chaussures"?["Medina Shoes","Casa Avenue"]:c==="jeans"?["Rif Denim","Boutique Atlas"]:g==="femme"?["Maison Zellige","Boutique Atlas","Casa Avenue"]:["Kasbah Style","Boutique Atlas","Casa Avenue"];
+      out.push({id:id++,title:t+(k?" — édition "+["été","hiver","limitée"][k%3]:""),gender:g,category:c,store_name:pool[Math.floor(r()*pool.length)],
+        price,median_30d:base,compare_at:claimed,real_disc_pct:Math.round(100*(1-price/base)),claimed_disc_pct:Math.round(100*(1-price/claimed)),
+        lowest_90d:real&&r()<.55,fake:!real,hist,color:pal[Math.floor(r()*pal.length)],age:Math.floor(r()*72),
+        sizes:g==="enfant"?["4A","6A","8A","10A"]:c==="chaussures"?["38","40","42","44"]:["S","M","L","XL"],product_url:"#"});
+    }
+  }
+  return out;
+}
+
+/* ---------- Garment illustration for demo cards ---------- */
+const SHAPES={
+  robes:'<path d="M78 40h44l8 30-12 8 22 92H60l22-92-12-8z"/>',traditionnel:'<path d="M70 38h60l14 40-14 6 10 96H60l10-96-14-6z"/><path d="M100 50v120" stroke="rgba(0,0,0,.18)" stroke-width="4"/>',
+  jeans:'<path d="M66 40h68l6 140h-30l-10-100-10 100H60z"/>',pantalons:'<path d="M66 40h68l8 140h-32l-10-100-10 100H58z"/>',
+  "t-shirts":'<path d="M70 44l-26 20 14 20 12-8v94h60V76l12 8 14-20-26-20c-6 10-18 14-30 14s-24-4-30-14z"/>',chemises:'<path d="M72 42l-24 18 10 110h84l10-110-24-18-28 20z"/><path d="M100 62v108" stroke="rgba(0,0,0,.18)" stroke-width="3"/>',
+  pulls:'<path d="M72 42l-30 26 10 70 16-4v36h64v-36l16 4 10-70-30-26c-6 8-16 12-28 12s-22-4-28-12z"/>',vestes:'<path d="M70 40l-28 24 6 116h104l6-116-28-24-30 34z"/><path d="M100 74v106" stroke="rgba(0,0,0,.2)" stroke-width="4"/>',
+  ensembles:'<path d="M72 36l-22 18 10 14 10-6v40h60V62l10 6 10-14-22-18c-6 8-14 10-28 10s-22-2-28-10z"/><path d="M70 112h60l4 70h-26l-8-46-8 46H66z"/>',
+  chaussures:'<path d="M40 130c0-14 10-22 22-22 14 0 22 10 40 12s36 4 50 14c8 6 8 16 0 20H48c-6 0-8-6-8-24z"/>',
+  sacs:'<path d="M58 80h84l10 96H48z"/><path d="M78 80c0-26 44-26 44 0" fill="none" stroke="currentColor" stroke-width="7"/>',
+  accessoires:'<path d="M50 120c0-30 22-50 50-50s50 20 50 50z"/><path d="M40 120h90c10 0 14 8 0 10H40z"/>'};
+function art(p){
+  const s=SHAPES[p.category]||SHAPES["t-shirts"], dark=shade(p.color,-38);
+  return `<svg class="art" viewBox="0 0 200 220" aria-hidden="true"><rect width="200" height="220" fill="${p.color}"/><g fill="${dark}" color="${dark}">${s}</g></svg>`;
+}
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);const c=[n>>16,(n>>8)&255,n&255].map(v=>Math.max(0,Math.min(255,v+amt)));return"#"+c.map(v=>v.toString(16).padStart(2,"0")).join("")}
+
+function spark(h,w=180,ht=26){
+  const mn=Math.min(...h),mx=Math.max(...h),sx=w/(h.length-1),sy=v=>ht-3-((v-mn)/(mx-mn||1))*(ht-6);
+  const d=h.map((v,i)=>(i?"L":"M")+(i*sx).toFixed(1)+" "+sy(v).toFixed(1)).join("");
+  return `<svg class="spark" viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none" aria-label="Historique du prix sur 30 jours"><path d="${d}" fill="none" stroke="#1F5E4B" stroke-width="1.6" vector-effect="non-scaling-stroke"/><circle cx="${w-1.5}" cy="${sy(h.at(-1))}" r="2.5" fill="#C2562B"/></svg>`;
+}
+
+/* ---------- State & render ---------- */
+let ALL=[], st={g:"all",cat:null,q:"",max:2000,low:false,sort:"score"};
+const $=s=>document.querySelector(s);
+const scoreOf=p=>Math.min(100,Math.max(0,Math.round((p.real_disc_pct||0)*1.6+(p.lowest_90d?12:0))));
+const fmt=n=>Math.round(n).toLocaleString("fr-MA")+" DH";
+const scoreColor=s=>s>=70?"#1F5E4B":s>=50?"#D8A23A":"#C2562B";
+
+function visible(){
+  return ALL.filter(p=>!p.fake
+    &&(st.g==="all"||p.gender===st.g)&&(!st.cat||p.category===st.cat)&&p.price<=st.max&&(!st.low||p.lowest_90d)
+    &&(!st.q||(p.title+" "+p.store_name+" "+(CAT_LABEL[p.category]||"")).toLowerCase().includes(st.q)))
+   .sort({score:(a,b)=>scoreOf(b)-scoreOf(a),disc:(a,b)=>b.real_disc_pct-a.real_disc_pct,asc:(a,b)=>a.price-b.price,new:(a,b)=>a.age-b.age}[st.sort]);
+}
+function render(){
+  const list=visible();
+  $("#count").textContent=list.length+" promo"+(list.length>1?"s":"");
+  $("#grid").innerHTML=list.length?list.map(p=>{const s=scoreOf(p);return `
+    <article class="card" data-id="${p.id}" tabindex="0">
+      <div class="thumb">${p.image_url?`<img src="${p.image_url}" alt="" loading="lazy">`:art(p)}
+        <span class="disc">-${p.real_disc_pct}%</span>
+        <span class="score" title="Score Hemza"><i style="background:${scoreColor(s)}"></i>${s}</span></div>
+      <div class="body">
+        <div class="store">${p.store_name}</div>
+        <div class="title">${p.title}</div>
+        ${spark(p.hist)}
+        <div class="badges">${p.lowest_90d?'<span class="badge gold">Plus bas 90 j</span>':""}<span class="badge">Baisse vérifiée</span></div>
+        <div class="prices"><span class="now">${fmt(p.price)}</span><span class="was">${fmt(p.median_30d)}</span></div>
+      </div></article>`}).join(""):'<div class="empty">Aucune promo ne correspond à ces filtres pour le moment.</div>';
+}
+function renderChips(){
+  const present=new Set(ALL.filter(p=>!p.fake&&(st.g==="all"||p.gender===st.g)).map(p=>p.category));
+  $("#chips").innerHTML=CATS.filter(c=>present.has(c)).map(c=>`<button class="chip" data-c="${c}" aria-pressed="${st.cat===c}">${CAT_LABEL[c]}</button>`).join("");
+}
+function open(p){
+  const s=scoreOf(p), claimedNote=p.claimed_disc_pct>p.real_disc_pct+3
+    ?`La boutique affiche -${p.claimed_disc_pct}% (prix barré ${fmt(p.compare_at)}), mais la baisse réelle mesurée est de -${p.real_disc_pct}%.`
+    :`La remise affichée par la boutique correspond à la baisse réelle mesurée.`;
+  $("#dlg").innerHTML=`<button class="close" aria-label="Fermer">×</button>
+    <div class="dlg"><div class="thumb">${p.image_url?`<img src="${p.image_url}" alt="">`:art(p)}</div>
+    <div class="dlg-body"><div class="store">${p.store_name} · ${CAT_LABEL[p.category]}</div><h3>${p.title}</h3>
+      <div class="prices"><span class="now">${fmt(p.price)}</span><span class="was">${fmt(p.median_30d)}</span><span class="badge">-${p.real_disc_pct}%</span></div>
+      <div class="why"><b style="color:${scoreColor(s)}">Score ${s}/100.</b> ${claimedNote}${p.lowest_90d?" C'est le prix le plus bas depuis 90 jours.":""}</div>
+      <div class="why">Tailles : ${p.sizes.join(" · ")}</div>
+      <a class="cta" href="${p.product_url}">Voir chez ${p.store_name} →</a></div></div>
+    <div class="chart"><h4>Prix sur 30 jours</h4>${spark(p.hist,500,70).replace('class="spark"','style="width:100%;height:70px"')}</div>`;
+  $("#dlg").showModal();
+}
+
+/* ---------- Events ---------- */
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{st.g=b.dataset.g;st.cat=null;document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-pressed",x===b));renderChips();render()});
+$("#chips").onclick=e=>{const c=e.target.closest(".chip");if(!c)return;st.cat=st.cat===c.dataset.c?null:c.dataset.c;renderChips();render()};
+$("#q").oninput=e=>{st.q=e.target.value.trim().toLowerCase();render()};
+$("#max").oninput=e=>{st.max=+e.target.value;$("#maxOut").textContent=fmt(st.max);render()};
+$("#low").onchange=e=>{st.low=e.target.checked;render()};
+$("#sort").onchange=e=>{st.sort=e.target.value;render()};
+$("#grid").onclick=e=>{const c=e.target.closest(".card");if(c)open(ALL.find(p=>p.id==c.dataset.id))};
+$("#grid").onkeydown=e=>{if(e.key==="Enter"){const c=e.target.closest(".card");if(c)open(ALL.find(p=>p.id==c.dataset.id))}};
+$("#dlg").onclick=e=>{if(e.target.classList.contains("close")||e.target.id==="dlg")$("#dlg").close()};
+
+/* ---------- Load ---------- */
+async function load(){
+  if(SUPABASE_URL&&SUPABASE_ANON){
+    const h={apikey:SUPABASE_ANON,Authorization:"Bearer "+SUPABASE_ANON};
+    const deals=await fetch(SUPABASE_URL+"/rest/v1/deals?select=*&order=score.desc&limit=500",{headers:h}).then(r=>r.json());
+    const ids=deals.map(d=>d.id).join(",");
+    const hist=ids?await fetch(SUPABASE_URL+`/rest/v1/price_history?select=product_id,price,observed_at&product_id=in.(${ids})&observed_at=gte.${new Date(Date.now()-30*864e5).toISOString()}&order=observed_at.asc`,{headers:h}).then(r=>r.json()):[];
+    const H={};hist.forEach(x=>(H[x.product_id]??=[]).push(+x.price));
+    ALL=deals.map(d=>({...d,price:+d.price,median_30d:+(d.median_30d||d.compare_at),hist:H[d.id]?.length>1?H[d.id]:[+d.compare_at||+d.price,+d.price],
+      real_disc_pct:d.real_disc_pct??d.claimed_disc_pct,age:(Date.now()-new Date(d.observed_at))/36e5,sizes:d.sizes||[],color:"#EADFD2"}));
+    $("#demoBar").remove();
+    $("#sFake").textContent="✓";
+  } else {
+    ALL=demoData();
+    $("#sFake").textContent=ALL.filter(p=>p.fake).length;
+  }
+  $("#sDeals").textContent=ALL.filter(p=>!p.fake).length;
+  $("#sStores").textContent=new Set(ALL.map(p=>p.store_name)).size;
+  renderChips();render();
+}
+load();
+</script>
+</body>
+</html>
