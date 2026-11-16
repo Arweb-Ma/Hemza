@@ -5,7 +5,7 @@ Hemza.ma collector — reads public Shopify /products.json feeds, classifies ite
 Usage:
   export SUPABASE_URL=https://xxxx.supabase.co
   export SUPABASE_SERVICE_KEY=...            # service role key (server side only!)
-  python collect.py                          # crawl all stores in stores.yaml
+  python collect.py                          # crawl all stores in stores.json
   python collect.py --dry-run                # print what would be saved
   python collect.py --sample sample.json     # classify a local products.json (offline test)
 
@@ -13,7 +13,7 @@ Run it every 6h (cron, GitHub Actions or a Cloudflare Worker cron).
 """
 import argparse, json, os, re, sys, time, unicodedata
 from datetime import datetime, timezone
-import requests, yaml
+import requests
 
 UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
 PAGE_LIMIT = 250
@@ -156,14 +156,17 @@ def save(db, store, items):
     return len(items), len(ph)
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")   # Windows consoles
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--sample", help="classify a local products.json file")
-    ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.yaml"))
+    ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.json"))
     a = ap.parse_args()
 
     if a.sample:
-        data = json.load(open(a.sample))
+        data = json.load(open(a.sample, encoding="utf-8"))
         for p in data["products"]:
             n = normalize("example.ma", p)
             if n:
@@ -171,7 +174,7 @@ def main():
                 print(f"{n['gender']:8} {n['category']:13} {n['_price']:>8.2f} DH {disc:>5}  {n['title']}")
         return
 
-    stores = yaml.safe_load(open(a.stores))["stores"]
+    stores = json.load(open(a.stores, encoding="utf-8"))["stores"]
     db = None if a.dry_run else DB()
     for s in stores:
         print(f"→ {s['domain']}")
