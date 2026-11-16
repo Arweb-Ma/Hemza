@@ -33,3 +33,4 @@ jobs:
           python-version: '3.13'
       - run: pip install -r collector/requirements.txt
       - run: python collector/test_collect.py
+      - run: python collector/test_run.py

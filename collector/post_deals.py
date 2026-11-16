@@ -2,13 +2,14 @@
 Posts the best new deals to a Telegram channel (and prepares captions for Instagram/Facebook).
 
   export SUPABASE_URL=... SUPABASE_SERVICE_KEY=...
-  export TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHANNEL=@hemza_ma
+  export TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHANNEL=@your_channel
+  export SITE_URL=https://hemza.ma     # optional: posts then link to the deal's page on the site
   python post_deals.py --min-score 40 --max 5          # post up to 5 deals
   python post_deals.py --review                        # print only, post nothing (manual approval)
 
 Never re-posts a product unless its price dropped again since the last post.
 """
-import argparse, os, requests
+import argparse, os, sys, requests
 
 def sb(path, method="GET", json=None):
     url = os.environ["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path
@@ -19,6 +20,9 @@ def sb(path, method="GET", json=None):
     return r.json() if r.text else None
 
 def link(d):
+    site = os.environ.get("SITE_URL", "").rstrip("/")
+    if site:                                   # send people to our own page first
+        return f"{site}/promo/{d['id']}/"
     tpl = d.get("affiliate_tpl")
     return tpl.replace("{url}", requests.utils.quote(d["product_url"], safe="")) if tpl else d["product_url"] + "?utm_source=hemza"
 
@@ -40,7 +44,30 @@ def caption(d):
     lines += [f"🏬 {d['store_name']}", f"👉 {link(d)}", "", f"#hemza #soldes #maroc #mode{d['gender']}"]
     return "\n".join(lines)
 
+def send(token, channel, deal, text):
+    """Photo with caption when there is an image; plain message otherwise or if Telegram rejects the photo."""
+    api = f"https://api.telegram.org/bot{token}"
+    if deal.get("image_url"):
+        r = requests.post(f"{api}/sendPhoto", timeout=30,
+                          data={"chat_id": channel, "photo": deal["image_url"], "caption": text[:1024]})
+        if r.ok:
+            return
+    r = requests.post(f"{api}/sendMessage", data={"chat_id": channel, "text": text}, timeout=30)
+    r.raise_for_status()
+
+def select(deals, posts, limit, include_unverified=False):
+    """Deals worth posting now: never posted, or cheaper than the last time we posted them."""
+    last = {}
+    for p in posts:
+        last[p["product_id"]] = min(float(p["price"]), last.get(p["product_id"], float("inf")))
+    if not include_unverified:
+        deals = [d for d in deals if d.get("verified")]
+    return [d for d in deals if float(d["price"]) < last.get(d["id"], float("inf"))][:limit]
+
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")   # Windows consoles
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-score", type=int, default=40)
     ap.add_argument("--max", type=int, default=5)
@@ -49,22 +76,29 @@ def main():
                     help="also post promos we could not check against our own price history yet")
     a = ap.parse_args()
 
-    deals = sb(f"deals?select=*&score=gte.{a.min_score}&order=score.desc&limit=50")
-    posted = {(p["product_id"]): float(p["price"]) for p in sb("posts?select=product_id,price&channel=eq.telegram")}
-    if not a.include_unverified:
-        deals = [d for d in deals if d.get("verified")]
-    fresh = [d for d in deals if d["id"] not in posted or float(d["price"]) < posted[d["id"]]][: a.max]
+    only_verified = "" if a.include_unverified else "&verified=is.true"
+    deals = sb(f"deals?select=*&score=gte.{a.min_score}{only_verified}&order=score.desc&limit=200")
+    posts = sb("posts?select=product_id,price&channel=eq.telegram")
+    fresh = select(deals, posts, a.max, a.include_unverified)
+    if not fresh:
+        print("Nothing new to post.")
+        return
 
+    failed = 0
     for d in fresh:
-        cap = caption(d)
+        text = caption(d)
         if a.review:
-            print(cap, "\n" + "-" * 40); continue
-        tok, ch = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHANNEL"]
-        r = requests.post(f"https://api.telegram.org/bot{tok}/sendPhoto",
-                          data={"chat_id": ch, "photo": d["image_url"], "caption": cap}, timeout=30)
-        r.raise_for_status()
+            print(text, "\n" + "-" * 40); continue
+        try:
+            send(os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHANNEL"], d, text)
+        except requests.RequestException as e:
+            failed += 1
+            print(f"! could not post {d['title']}: {e}", file=sys.stderr)
+            continue
         sb("posts", "POST", [{"product_id": d["id"], "channel": "telegram", "price": d["price"]}])
         print("posted:", d["title"])
+    if failed:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

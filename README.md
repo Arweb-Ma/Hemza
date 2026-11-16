@@ -5,6 +5,8 @@
 - `collector/collect.py` — the collector: paced queues, saving to Supabase. `collector/platforms.py` holds one catalog reader per platform (Shopify, WooCommerce, PrestaShop experimental); `collector/classify.py` sorts items into femme/homme/enfant + category (FR/EN/Darija-Arabic).
 - `collector/stores.json` — the stores to read. Each entry: `name`, `domain`, optional `platform` (`shopify` by default, `woocommerce`, `prestashop`), `gender_hint`, `category_hint`, and for PrestaShop `paths` (listing URLs to read). Find a shop's platform with `python collector/collect.py --detect shop.ma`.
 - `collector/post_deals.py` — posts top deals to a Telegram channel; `--review` prints them for manual approval.
+- `collector/run.py` — one full cycle for a scheduler: collect, then post new verified deals, then (optionally) ask the site to rebuild. Each step runs only if its settings are present.
+- `.github/workflows/deploy.yml` — rebuilds and deploys the site every two hours, on changes to `web/`, or on demand. Needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets; without them it only builds.
 - `web/` — the website (Astro + TypeScript, static, deployed to Cloudflare). See `web/README.md`.
 
 ## Go-live

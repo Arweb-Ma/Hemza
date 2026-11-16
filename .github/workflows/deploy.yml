@@ -1,0 +1,43 @@
+name: Deploy site
+
+# The site is static: it shows the deals that existed when it was last built.
+# Rebuilding every two hours keeps it in step with the collector.
+on:
+  schedule:
+    - cron: '20 */2 * * *'
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      # Public, read-only values (see web/.env.example).
+      SUPABASE_URL: https://tcsjfqkreqceektalogu.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_cCihiXDolnLBydPGaLKm3g_KNX17m2c
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy to Cloudflare
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        run: npx wrangler deploy
+      - name: Deployment not configured
+        if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
+        run: echo "Built, not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to go live."
