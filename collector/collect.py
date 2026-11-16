@@ -1,146 +1,55 @@
 """
-Hemza.ma collector — reads public Shopify /products.json feeds, classifies items
+Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop), classifies items
 (femme / homme / enfant + category) and writes prices to Supabase.
 
-Usage:
+Usage (PowerShell: $env:NAME = "value" instead of export):
   export SUPABASE_URL=https://xxxx.supabase.co
   export SUPABASE_SERVICE_KEY=...            # service role key (server side only!)
-  python collect.py                          # crawl all stores in stores.json
-  python collect.py --dry-run                # print what would be saved
-  python collect.py --sample sample.json     # classify a local products.json (offline test)
-
-It is deliberately slow: one request about every minute, slower when stores refuse.
-A full run can take from 15 minutes to 3 hours. Run it once or twice a day.
+  python collect.py                          # read every store in stores.json
+  python collect.py --dry-run                # read, but save nothing
+  python collect.py --detect shop.ma other.ma  # which platform is it, and can we read it?
   python collect.py --only casquetta.ma      # one store
   python collect.py --max-minutes 60         # stop after an hour
+
+It is deliberately slow. Shopify stores share one queue (about one request a minute, slower
+when refused); every other store has its own, faster one. Run it once or twice a day.
 """
-import argparse, json, os, re, sys, time, unicodedata
-from collections import deque
+import argparse, json, os, sys, time
 from datetime import datetime, timezone
 import requests
 
-UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
-PAGE_LIMIT = 250
-MAX_PAGES = 20
+import platforms
+from classify import classify          # re-exported for tests and scripts
 
-# Pacing. Shopify throttles unknown crawlers across ALL its stores at once, so the pace is
-# global, not per store: one request, then a pause, whichever store comes next.
-START_GAP = 60          # seconds between two requests at the start of a run
-MIN_GAP = 30            # never go faster than this, even when everything works
+MAX_ATTEMPTS = 4        # tries per store per run; a refused store waits for its next turn
 MAX_GAP = 900           # never wait longer than 15 minutes for one request
-MAX_ATTEMPTS = 3        # tries per store per run; a refused store goes to the back of the queue
+# (start, minimum) seconds between two requests in the same queue.
+# Shopify throttles unknown crawlers across ALL its stores at once, hence one shared slow queue.
+PACE = {"shopify": (60, 30), "default": (10, 5)}
 
-# ---------- classification (FR / EN / Darija-AR keywords) ----------
-def _norm(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()
-    return s.lower()
-
-GENDER_RULES = [
-    ("enfant", r"\b(enfant|enfants|kids?|bebe|baby|fille|garcon|junior|girls?|boys?|ans)\b|اطفال|أطفال|بيبي"),
-    ("femme",  r"\b(femme|femmes|women|woman|ladies|dame|robe|jupe|abaya|caftan|kaftan|takchita|soutien|lingerie|legging)\b|نساء|نسائي"),
-    ("homme",  r"\b(homme|hommes|men|man|masculin|gentleman)\b|رجال|رجالي"),
-]
-CATEGORY_RULES = [
-    ("chaussures", r"chaussure|basket|sneaker|sandale|mocassin|botte|bottine|escarpin|shoe|mule|loafer|حذاء|صندل|سبرديلة"),
-    ("sacs",       r"\bsac|pochette|cabas|bag|cartable|valise|حقيبة|صاك"),
-    ("traditionnel", r"caftan|kaftan|takchita|djellaba|jellaba|gandoura|abaya|قفطان|تكشيطة|جلابة|عباية"),
-    ("robes",      r"\brobe|dress|فستان|كسوة"),
-    ("jeans",      r"\bjean|denim"),
-    ("pantalons",  r"pantalon|trouser|chino|jogger|jogging"),
-    ("vestes",     r"veste|blouson|manteau|doudoune|parka|blazer|jacket|coat"),
-    ("pulls",      r"\bpull|sweat|hoodie|cardigan|gilet"),
-    ("t-shirts",   r"t-?shirt|tee\b|polo|debardeur|top\b"),
-    ("chemises",   r"chemise|shirt|blouse"),
-    ("ensembles",  r"ensemble|set\b|survetement|tracksuit"),
-    ("accessoires", r"casquette|ceinture|bijou|montre|lunette|echarpe|foulard|cap\b|bonnet"),
-]
-
-def classify(title, product_type, tags, gender_hint=None, category_hint=None):
-    text = " ".join([title or "", product_type or "", " ".join(tags or [])])
-    t = _norm(text) + " " + text   # keep raw for Arabic keywords
-    gender = None
-    for g, rx in GENDER_RULES:
-        if re.search(rx, t):
-            gender = g
-            break
-    gender = gender or gender_hint or "unisexe"
-    category = next((c for c, rx in CATEGORY_RULES if re.search(rx, t)), category_hint or "autres")
-    return gender, category
-
-# ---------- Shopify feed ----------
 class Pacer:
     """Spaces out requests and adapts: slower after every refusal, slowly faster after successes."""
-    def __init__(self, start=START_GAP, low=MIN_GAP, high=MAX_GAP, sleep=None, clock=None):
+    def __init__(self, start, low, high=MAX_GAP, sleep=None, clock=None):
         self.gap, self.low, self.high = start, low, high
         self._sleep, self._clock, self._last = sleep or time.sleep, clock or time.monotonic, None
 
+    def ready_at(self):
+        """Clock time at which this queue may send its next request."""
+        return self._clock() if self._last is None else self._last + self.gap
+
     def wait(self):
-        if self._last is not None:
-            remaining = self._last + self.gap - self._clock()
-            if remaining > 0:
-                if remaining >= 90:
-                    print(f"  … waiting {remaining / 60:.0f} min before the next request")
-                self._sleep(remaining)
+        remaining = self.ready_at() - self._clock()
+        if remaining > 0:
+            if remaining >= 90:
+                print(f"  … waiting {remaining / 60:.0f} min before the next request")
+            self._sleep(remaining)
         self._last = self._clock()
 
     def success(self):
-        self.gap = max(self.low, self.gap * 0.8)
+        self.gap = max(self.low, self.gap * 0.9)    # speed up gently: refusals are costly
 
     def throttled(self, retry_after=None):
         self.gap = min(self.high, max(self.gap * 2, retry_after or 0))
-
-DIAGNOSTIC_HEADERS = ("retry-after", "server", "cf-mitigated", "cf-ray", "x-shopify-stage", "x-request-id")
-
-def describe(r):
-    """One line explaining a refusal, so we can tell a rate limit from a bot challenge."""
-    seen = [f"{h}={r.headers[h]}" for h in DIAGNOSTIC_HEADERS if h in r.headers]
-    kind = (r.headers.get("content-type") or "?").split(";")[0]
-    return f"HTTP {r.status_code} [{kind}] " + " ".join(seen)
-
-def fetch_page(domain, page):
-    """Returns ("ok", products) | ("throttled", retry_after_seconds, detail) | ("error", detail)."""
-    url = f"https://{domain}/products.json?limit={PAGE_LIMIT}&page={page}"
-    try:
-        r = requests.get(url, headers={"User-Agent": UA, "Accept": "application/json"}, timeout=30)
-    except requests.RequestException as e:
-        return ("error", str(e))
-    if r.status_code in (429, 430, 503):
-        asked = r.headers.get("Retry-After", "")
-        return ("throttled", int(asked) if asked.isdigit() else None, describe(r))
-    if r.status_code != 200:
-        return ("error", describe(r))
-    try:
-        return ("ok", r.json().get("products", []))
-    except ValueError:
-        return ("error", "no product feed here (not a Shopify catalog, or a challenge page) " + describe(r))
-
-def normalize(domain, p, gender_hint=None, category_hint=None):
-    variants = p.get("variants") or []
-    if not variants:
-        return None
-    avail = [v for v in variants if v.get("available")]
-    pool = avail or variants
-    best = min(pool, key=lambda v: float(v.get("price") or 1e9))
-    price = float(best["price"])
-    cmp_ = best.get("compare_at_price")
-    cmp_ = float(cmp_) if cmp_ not in (None, "", "0.00") else None
-    gender, category = classify(p.get("title"), p.get("product_type"), p.get("tags"), gender_hint, category_hint)
-    sizes = sorted({v.get("option1") for v in avail if v.get("option1")})[:12]
-    img = (p.get("images") or [{}])[0].get("src")
-    return {
-        "external_id": str(p["id"]),
-        "handle": p.get("handle"),
-        "title": p.get("title", "").strip(),
-        "brand": p.get("vendor"),
-        "gender": gender,
-        "category": category,
-        "image_url": img,
-        "product_url": f"https://{domain}/products/{p.get('handle')}",
-        "sizes": sizes,
-        "in_stock": bool(avail),
-        "_price": price,
-        "_compare_at": cmp_,
-    }
 
 # ---------- Supabase REST ----------
 class DB:
@@ -173,7 +82,7 @@ class DB:
         return last
 
 def save(db, store, items):
-    store_row = db.upsert("stores", [{"name": store["name"], "domain": store["domain"],
+    store_row = db.upsert("stores", [{"name": store["name"], "domain": store["domain"], "platform": store.get("platform", "shopify"),
                                        "last_crawl_at": datetime.now(timezone.utc).isoformat()}], "domain")[0]
     now = datetime.now(timezone.utc).isoformat()
     prod_rows = [{k: v for k, v in it.items() if not k.startswith("_")} | {"store_id": store_row["id"], "last_seen_at": now}
@@ -195,47 +104,84 @@ def save(db, store, items):
         db.insert("price_history", ph[i:i+500])
     return len(items), len(ph)
 
+def queue_key(store):
+    """Stores on the same throttled infrastructure share one pacer."""
+    platform = store.get("platform", "shopify")
+    return "shopify" if platform == "shopify" else store["domain"]
+
+def detect(domains):
+    for domain in domains:
+        print(f"→ {domain}")
+        found = None
+        for name in platforms.ADAPTERS:
+            result = platforms.fetch({"domain": domain, "name": domain, "platform": name}, None, sample=True)
+            if result[0] == "ok":
+                print(f"  {name:12} yes, {len(result[1])} products in the sample")
+                found = found or name
+                for item in result[1][:2]:
+                    was = f" (was {item['_compare_at']:.0f})" if item["_compare_at"] else ""
+                    print(f"               {item['_price']:.0f} DH{was}  {item['gender']}/{item['category']}  {item['title'][:50]}")
+            else:
+                print(f"  {name:12} no: {result[-1][:110]}")
+            time.sleep(3)
+        if found:
+            print(f'  add to stores.json: {{ "name": "{domain}", "domain": "{domain}", "platform": "{found}", "gender_hint": null }}')
+        else:
+            print("  not readable with the built-in readers; ask the shop for its product feed")
+
 def main():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")   # Windows consoles
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--sample", help="classify a local products.json file")
+    ap.add_argument("--detect", nargs="+", metavar="DOMAIN", help="identify the platform of these shops")
     ap.add_argument("--only", nargs="+", metavar="DOMAIN", help="only these stores")
-    ap.add_argument("--gap", type=int, default=START_GAP, help="seconds between requests at the start (default 60)")
     ap.add_argument("--max-minutes", type=int, default=180, help="stop after this long (default 180)")
     ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.json"))
     a = ap.parse_args()
 
-    if a.sample:
-        data = json.load(open(a.sample, encoding="utf-8"))
-        for p in data["products"]:
-            n = normalize("example.ma", p)
-            if n:
-                disc = f"-{round(100*(1-n['_price']/n['_compare_at']))}%" if n["_compare_at"] else ""
-                print(f"{n['gender']:8} {n['category']:13} {n['_price']:>8.2f} DH {disc:>5}  {n['title']}")
-        return
+    if a.detect:
+        return detect(a.detect)
 
-    stores = json.load(open(a.stores, encoding="utf-8"))["stores"]
-    db = None if a.dry_run else DB()
+    with open(a.stores, encoding="utf-8") as f:
+        stores = json.load(f)["stores"]
     if a.only:
         stores = [s for s in stores if s["domain"] in a.only]
-    pacer = Pacer(start=a.gap, sleep=lambda s: time.sleep(s), clock=lambda: time.monotonic())
-    deadline = time.monotonic() + a.max_minutes * 60
+    db = None if a.dry_run else DB()
+
+    sleep, clock = (lambda s: time.sleep(s)), (lambda: time.monotonic())
+    # Remember the pace that worked last time, so a new run does not re-learn it by being refused.
+    state_path = a.stores + ".state"
+    try:
+        with open(state_path, encoding="utf-8") as f:
+            learned = json.load(f).get("gap", {})
+    except (OSError, ValueError):
+        learned = {}
+    pacers = {}
+    for s in stores:
+        key = queue_key(s)
+        start, low = PACE.get(key, PACE["default"])
+        start = min(MAX_GAP, max(start, float(learned.get(key, 0))))
+        pacers.setdefault(key, Pacer(start, low, sleep=sleep, clock=clock))
+    deadline = clock() + a.max_minutes * 60
     totals = {s["domain"]: 0 for s in stores}
     done, gave_up = set(), {}
-    queue = deque((s, 1, 0) for s in stores)          # (store, page, attempts)
+    queue = [(s, None, 0) for s in stores]             # (store, cursor, attempts)
 
     while queue:
-        if time.monotonic() + pacer.gap > deadline and pacer._last is not None:
+        # Next: the entry whose queue is ready first (keeps fast shops moving while Shopify cools down).
+        index = min(range(len(queue)), key=lambda i: pacers[queue_key(queue[i][0])].ready_at())
+        s, cursor, attempts = queue[index]
+        pacer = pacers[queue_key(s)]
+        if pacer.ready_at() > deadline:
             print(f"\nTime budget of {a.max_minutes} min reached: stopping here.")
             break
-        s, page, attempts = queue.popleft()
+        queue.pop(index)
         domain = s["domain"]
         pacer.wait()
-        print(f"→ {domain} (page {page})")
-        result = fetch_page(domain, page)
+        print(f"→ {domain}" + (f" ({platforms.label(cursor)})" if cursor else ""))
+        result = platforms.fetch(s, cursor)
 
         if result[0] == "throttled":
             _, retry_after, detail = result
@@ -243,7 +189,7 @@ def main():
             print(f"  ! refused: {detail}", file=sys.stderr)
             if attempts + 1 < MAX_ATTEMPTS:
                 print(f"  … will come back to it later; next pause {pacer.gap / 60:.0f} min")
-                queue.append((s, page, attempts + 1))
+                queue.append((s, cursor, attempts + 1))
             else:
                 gave_up[domain] = "refused"
             continue
@@ -253,24 +199,29 @@ def main():
             continue
 
         pacer.success()
-        raw = result[1]
-        items = [n for p in raw if (n := normalize(domain, p, s.get("gender_hint"), s.get("category_hint")))]
+        _, items, next_cursor = result
         totals[domain] += len(items)
         if a.dry_run:
             print(f"  {len(items)} products")
         elif items:
             n, changed = save(db, s, items)             # saved page by page: nothing is lost if we stop
             print(f"  {n} products, {changed} price rows written")
-        if len(raw) == PAGE_LIMIT and page < MAX_PAGES:
-            queue.appendleft((s, page + 1, 0))          # finish this store before moving on
+        if next_cursor is not None:
+            queue.insert(0, (s, next_cursor, 0))        # finish this store before starting another
         else:
             done.add(domain)
+
+    try:
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump({"gap": {"shopify": round(pacers["shopify"].gap)} if "shopify" in pacers else {}}, f)
+    except OSError:
+        pass
 
     print("\nSummary")
     for s in stores:
         d = s["domain"]
         state = "complete" if d in done else ("partial" if totals[d] else gave_up.get(d, "not reached"))
-        print(f"  {d:22} {totals[d]:5} products  {state}")
+        print(f"  {d:24} {s.get('platform', 'shopify'):12} {totals[d]:5} products  {state}")
     read = sum(1 for d in totals if totals[d])
     print(f"Done: {read}/{len(stores)} stores read.")
 

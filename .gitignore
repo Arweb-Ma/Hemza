@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
+*.state
 node_modules/
 dist/
 .astro/

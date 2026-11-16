@@ -2,8 +2,8 @@
 
 ## Structure
 - `db/schema.sql` — tables (stores, products, price_history, posts) + views `deal_candidates` and `deals` (scoring, fake-promo filter). Tested on Postgres 16.
-- `collector/collect.py` — reads public Shopify `/products.json` feeds, classifies femme/homme/enfant + category (FR/EN/Darija-Arabic), writes prices to Supabase.
-- `collector/stores.json` — seed store list (verify each one first).
+- `collector/collect.py` — the collector: paced queues, saving to Supabase. `collector/platforms.py` holds one catalog reader per platform (Shopify, WooCommerce, PrestaShop experimental); `collector/classify.py` sorts items into femme/homme/enfant + category (FR/EN/Darija-Arabic).
+- `collector/stores.json` — the stores to read. Each entry: `name`, `domain`, optional `platform` (`shopify` by default, `woocommerce`, `prestashop`), `gender_hint`, `category_hint`, and for PrestaShop `paths` (listing URLs to read). Find a shop's platform with `python collector/collect.py --detect shop.ma`.
 - `collector/post_deals.py` — posts top deals to a Telegram channel; `--review` prints them for manual approval.
 - `web/` — the website (Astro + TypeScript, static, deployed to Cloudflare). See `web/README.md`.
 
