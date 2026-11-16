@@ -17,8 +17,10 @@ import requests
 
 UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
 PAGE_LIMIT = 250
-POLITE_DELAY = 2.0      # seconds between requests to the same store
+POLITE_DELAY = 5.0      # seconds between two requests (pages or stores)
 MAX_PAGES = 20
+MAX_RETRIES = 3         # after a "slow down" answer (HTTP 429)
+MAX_WAIT = 120          # never wait longer than this for one retry, in seconds
 
 # ---------- classification (FR / EN / Darija-AR keywords) ----------
 def _norm(s: str) -> str:
@@ -58,21 +60,47 @@ def classify(title, product_type, tags, gender_hint=None):
     return gender, category
 
 # ---------- Shopify feed ----------
+class Throttled(Exception):
+    """The store asked us to slow down and did not let us in after polite retries."""
+
+def get_page(url):
+    """GET one page. On HTTP 429/430 wait as long as the server asks (Retry-After), then retry."""
+    for attempt in range(MAX_RETRIES + 1):
+        r = requests.get(url, headers={"User-Agent": UA, "Accept": "application/json"}, timeout=30)
+        if r.status_code not in (429, 430):
+            return r
+        if attempt == MAX_RETRIES:
+            break
+        asked = r.headers.get("Retry-After", "")
+        wait = min(int(asked), MAX_WAIT) if asked.isdigit() else min(30 * 2 ** attempt, MAX_WAIT)
+        print(f"  … asked to slow down, waiting {wait}s (try {attempt + 1}/{MAX_RETRIES})")
+        time.sleep(wait)
+    raise Throttled(f"HTTP {r.status_code} after {MAX_RETRIES} retries")
+
 def fetch_shopify(domain):
+    """Returns (products, complete). `complete` is False if the catalog could not be read to the end."""
     out, page = [], 1
     while page <= MAX_PAGES:
         url = f"https://{domain}/products.json?limit={PAGE_LIMIT}&page={page}"
-        r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+        try:
+            r = get_page(url)
+        except Throttled as e:
+            print(f"  ! {domain} page {page}: {e}", file=sys.stderr)
+            return out, False
         if r.status_code != 200:
             print(f"  ! {domain} page {page}: HTTP {r.status_code}", file=sys.stderr)
-            break
-        items = r.json().get("products", [])
-        if not items:
-            break
+            return out, False
+        try:
+            items = r.json().get("products", [])
+        except ValueError:
+            print(f"  ! {domain}: no product feed here (not a Shopify catalog, or blocked)", file=sys.stderr)
+            return out, False
         out.extend(items)
+        if len(items) < PAGE_LIMIT:      # last page: don't spend a request on an empty one
+            break
         page += 1
         time.sleep(POLITE_DELAY)
-    return out
+    return out, True
 
 def normalize(domain, p, gender_hint=None):
     variants = p.get("variants") or []
@@ -176,17 +204,25 @@ def main():
 
     stores = json.load(open(a.stores, encoding="utf-8"))["stores"]
     db = None if a.dry_run else DB()
-    for s in stores:
+    ok, failed = 0, []
+    for i, s in enumerate(stores):
+        if i:
+            time.sleep(POLITE_DELAY)
         print(f"→ {s['domain']}")
         try:
-            raw = fetch_shopify(s["domain"])
-        except Exception as e:
-            print(f"  ! {e}", file=sys.stderr); continue
+            raw, complete = fetch_shopify(s["domain"])
+        except requests.RequestException as e:
+            print(f"  ! {e}", file=sys.stderr); failed.append(s["domain"]); continue
         items = [n for p in raw if (n := normalize(s["domain"], p, s.get("gender_hint")))]
+        if not items:
+            failed.append(s["domain"]); continue
+        ok += 1
+        note = "" if complete else " (partial catalog)"
         if a.dry_run:
-            print(f"  {len(items)} products"); continue
+            print(f"  {len(items)} products{note}"); continue
         n, changed = save(db, s, items)
-        print(f"  {n} products, {changed} price rows written")
+        print(f"  {n} products{note}, {changed} price rows written")
+    print(f"\nDone: {ok}/{len(stores)} stores read." + (f" No data from: {', '.join(failed)}" if failed else ""))
 
 if __name__ == "__main__":
     main()
