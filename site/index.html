@@ -62,6 +62,8 @@ select{height:36px;border-radius:10px;border:1px solid var(--line);background:#f
 .prices{display:flex;align-items:baseline;gap:8px;margin-top:auto}
 .now{font-weight:700;font-size:18px}
 .was{color:var(--muted);text-decoration:line-through;font-size:13px}
+.arrow{color:var(--muted);font-size:13px}
+.save{font-size:12.5px;font-weight:600;color:var(--terra)}
 .badges{display:flex;gap:5px;flex-wrap:wrap}
 .badge{font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--green-soft);color:var(--green)}
 .badge.gold{background:#FBEFD5;color:#8A5D0B}
@@ -132,7 +134,8 @@ dialog::backdrop{background:rgba(30,27,24,.45)}
     <label class="toggle"><input type="checkbox" id="low"> Prix le plus bas 90 j</label>
     <select id="sort" aria-label="Trier">
       <option value="score">Meilleures promos</option>
-      <option value="disc">Plus forte remise</option>
+      <option value="save">Plus grosse économie (DH)</option>
+      <option value="disc">Plus forte remise (%)</option>
       <option value="asc">Prix croissant</option>
       <option value="new">Plus récentes</option>
     </select>
@@ -155,8 +158,8 @@ dialog::backdrop{background:rgba(30,27,24,.45)}
 
 <script>
 /* ---------- CONFIG: set these to go live (anon key is public, read-only via RLS) ---------- */
-const SUPABASE_URL = "";   // e.g. "https://xxxx.supabase.co"
-const SUPABASE_ANON = "";
+const SUPABASE_URL = "https://tcsjfqkreqceektalogu.supabase.co";
+const SUPABASE_ANON = "sb_publishable_cCihiXDolnLBydPGaLKm3g_KNX17m2c";
 const CATS = ["robes","traditionnel","jeans","pantalons","t-shirts","chemises","pulls","vestes","ensembles","chaussures","sacs","accessoires"];
 const CAT_LABEL = {"robes":"Robes","traditionnel":"Caftans & djellabas","jeans":"Jeans","pantalons":"Pantalons","t-shirts":"T-shirts & tops","chemises":"Chemises","pulls":"Pulls & sweats","vestes":"Vestes & manteaux","ensembles":"Ensembles","chaussures":"Chaussures","sacs":"Sacs","accessoires":"Accessoires"};
 
@@ -216,6 +219,7 @@ function spark(h,w=180,ht=26){
 let ALL=[], st={g:"all",cat:null,q:"",max:2000,low:false,sort:"score"};
 const $=s=>document.querySelector(s);
 const scoreOf=p=>Math.min(100,Math.max(0,Math.round((p.real_disc_pct||0)*1.6+(p.lowest_90d?12:0))));
+const saved=p=>Math.max(0,Math.round(p.median_30d-p.price));
 const fmt=n=>Math.round(n).toLocaleString("fr-MA")+" DH";
 const scoreColor=s=>s>=70?"#1F5E4B":s>=50?"#D8A23A":"#C2562B";
 
@@ -223,7 +227,7 @@ function visible(){
   return ALL.filter(p=>!p.fake
     &&(st.g==="all"||p.gender===st.g)&&(!st.cat||p.category===st.cat)&&p.price<=st.max&&(!st.low||p.lowest_90d)
     &&(!st.q||(p.title+" "+p.store_name+" "+(CAT_LABEL[p.category]||"")).toLowerCase().includes(st.q)))
-   .sort({score:(a,b)=>scoreOf(b)-scoreOf(a),disc:(a,b)=>b.real_disc_pct-a.real_disc_pct,asc:(a,b)=>a.price-b.price,new:(a,b)=>a.age-b.age}[st.sort]);
+   .sort({score:(a,b)=>scoreOf(b)-scoreOf(a),save:(a,b)=>saved(b)-saved(a),disc:(a,b)=>b.real_disc_pct-a.real_disc_pct,asc:(a,b)=>a.price-b.price,new:(a,b)=>a.age-b.age}[st.sort]);
 }
 function render(){
   const list=visible();
@@ -238,7 +242,8 @@ function render(){
         <div class="title">${p.title}</div>
         ${spark(p.hist)}
         <div class="badges">${p.lowest_90d?'<span class="badge gold">Plus bas 90 j</span>':""}<span class="badge">Baisse vérifiée</span></div>
-        <div class="prices"><span class="now">${fmt(p.price)}</span><span class="was">${fmt(p.median_30d)}</span></div>
+        <div class="prices"><span class="was">${fmt(p.median_30d)}</span><span class="arrow">→</span><span class="now">${fmt(p.price)}</span></div>
+        <div class="save">Vous économisez ${fmt(saved(p))}</div>
       </div></article>`}).join(""):'<div class="empty">Aucune promo ne correspond à ces filtres pour le moment.</div>';
 }
 function renderChips(){
@@ -253,6 +258,7 @@ function open(p){
     <div class="dlg"><div class="thumb">${p.image_url?`<img src="${p.image_url}" alt="">`:art(p)}</div>
     <div class="dlg-body"><div class="store">${p.store_name} · ${CAT_LABEL[p.category]}</div><h3>${p.title}</h3>
       <div class="prices"><span class="now">${fmt(p.price)}</span><span class="was">${fmt(p.median_30d)}</span><span class="badge">-${p.real_disc_pct}%</span></div>
+      <div class="save">Vous économisez ${fmt(saved(p))}</div>
       <div class="why"><b style="color:${scoreColor(s)}">Score ${s}/100.</b> ${claimedNote}${p.lowest_90d?" C'est le prix le plus bas depuis 90 jours.":""}</div>
       <div class="why">Tailles : ${p.sizes.join(" · ")}</div>
       <a class="cta" href="${p.product_url}">Voir chez ${p.store_name} →</a></div></div>
@@ -272,18 +278,24 @@ $("#grid").onkeydown=e=>{if(e.key==="Enter"){const c=e.target.closest(".card");i
 $("#dlg").onclick=e=>{if(e.target.classList.contains("close")||e.target.id==="dlg")$("#dlg").close()};
 
 /* ---------- Load ---------- */
-async function load(){
-  if(SUPABASE_URL&&SUPABASE_ANON){
+async function loadLive(){
+    if(!(SUPABASE_URL&&SUPABASE_ANON))return false;
     const h={apikey:SUPABASE_ANON,Authorization:"Bearer "+SUPABASE_ANON};
-    const deals=await fetch(SUPABASE_URL+"/rest/v1/deals?select=*&order=score.desc&limit=500",{headers:h}).then(r=>r.json());
+    const deals=await fetch(SUPABASE_URL+"/rest/v1/deals?select=*&order=score.desc&limit=500",{headers:h}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()});
     const ids=deals.map(d=>d.id).join(",");
     const hist=ids?await fetch(SUPABASE_URL+`/rest/v1/price_history?select=product_id,price,observed_at&product_id=in.(${ids})&observed_at=gte.${new Date(Date.now()-30*864e5).toISOString()}&order=observed_at.asc`,{headers:h}).then(r=>r.json()):[];
     const H={};hist.forEach(x=>(H[x.product_id]??=[]).push(+x.price));
-    ALL=deals.map(d=>({...d,price:+d.price,median_30d:+(d.median_30d||d.compare_at),hist:H[d.id]?.length>1?H[d.id]:[+d.compare_at||+d.price,+d.price],
+    ALL=deals.map(d=>({...d,price:+d.price,median_30d:+((d.n_obs>=5&&d.median_30d)||d.compare_at||d.median_30d),hist:H[d.id]?.length>1?H[d.id]:[+d.compare_at||+d.price,+d.price],
       real_disc_pct:d.real_disc_pct??d.claimed_disc_pct,age:(Date.now()-new Date(d.observed_at))/36e5,sizes:d.sizes||[],color:"#EADFD2"}));
+    if(!deals.length)return false;
     $("#demoBar").remove();
     $("#sFake").textContent="✓";
-  } else {
+    return true;
+}
+async function load(){
+  let live=false;
+  try{live=await loadLive()}catch(e){live=false}
+  if(!live){
     ALL=demoData();
     $("#sFake").textContent=ALL.filter(p=>p.fake).length;
   }

@@ -8,9 +8,9 @@
 - `site/index.html` — the website. Runs on demo data until `SUPABASE_URL` / `SUPABASE_ANON` are filled in.
 
 ## Go-live
-1. Supabase: create a project → SQL editor → run `db/schema.sql`.
+1. Supabase: project `hemza` (ref `tcsjfqkreqceektalogu`, eu-west-1) already has `db/schema.sql` applied.
 2. Collector: `pip install requests pyyaml`, set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`, run `python collector/collect.py --dry-run`, then for real. Schedule it every 6 h (GitHub Actions cron or a VPS cron).
-3. Site: put the anon key in `site/index.html`, deploy to Cloudflare Pages. Real product images load from the stores' CDNs.
+3. Site: `site/index.html` already points at the Supabase project (publishable key, read-only). It shows demo data until the `deals` view returns rows. Deploy to Cloudflare Pages. Real product images load from the stores' CDNs.
 4. Telegram: create the channel and a bot via @BotFather, add the bot as channel admin, then run `post_deals.py --review` and, once you're happy with it, without `--review`.
 
 ## Scoring

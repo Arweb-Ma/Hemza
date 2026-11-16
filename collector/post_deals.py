@@ -25,11 +25,13 @@ def link(d):
 GENDER_EMOJI = {"femme": "👗", "homme": "👔", "enfant": "🧸", "unisexe": "🛍️"}
 
 def caption(d):
-    was = d.get("median_30d") or d.get("compare_at")
+    was = d.get("median_30d") if (d.get("n_obs") or 0) >= 5 else (d.get("compare_at") or d.get("median_30d"))
+    was = float(was) if was else None
+    d = dict(d, price=float(d["price"]))
     disc = d.get("real_disc_pct") or d.get("claimed_disc_pct")
     lines = [
         f"{GENDER_EMOJI.get(d['gender'],'🛍️')} {d['title']}",
-        f"🏷️ {d['price']:.0f} DH" + (f"  (au lieu de {was:.0f} DH, -{disc}%)" if was and disc else ""),
+        (f"🏷️ {was:.0f} DH → {d['price']:.0f} DH  (-{was - d['price']:.0f} DH, -{disc}%)" if was and disc else f"🏷️ {d['price']:.0f} DH"),
     ]
     if d.get("lowest_90d"):
         lines.append("📉 Prix le plus bas depuis 90 jours")

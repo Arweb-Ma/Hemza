@@ -58,7 +58,7 @@ create table if not exists posts (
 --  claimed    = discount vs store compare_at -> shown, not trusted alone
 --  fake_promo = store claims ≥30% off but price is not lower than its 30-day median
 -- =========================================================
-create or replace view deal_candidates as
+create or replace view deal_candidates with (security_invoker = true) as
 with cur as (
   select distinct on (product_id) product_id, price, compare_at, in_stock, observed_at
   from price_history order by product_id, observed_at desc
@@ -91,8 +91,10 @@ left join hist  h on h.product_id = c.product_id
 left join low90 l on l.product_id = c.product_id
 where c.in_stock and s.active;
 
-create or replace view deals as
+create or replace view deals with (security_invoker = true) as
 select *,
+  -- dirhams saved vs our reference price (30-day median, else the store's own "was" price)
+  round(coalesce(case when n_obs >= 5 then median_30d end, compare_at, median_30d) - price)::int as saved_mad,
   -- score 0–100: trusted discount dominates; store claim counts only when history is thin
   least(100, greatest(0,
       coalesce(real_disc_pct, 0) * 1.6
@@ -109,6 +111,9 @@ alter table stores enable row level security;
 alter table products enable row level security;
 alter table price_history enable row level security;
 alter table posts enable row level security;
+drop policy if exists "public read stores" on stores;
+drop policy if exists "public read products" on products;
+drop policy if exists "public read prices" on price_history;
 create policy "public read stores"   on stores   for select using (true);
 create policy "public read products" on products for select using (true);
 create policy "public read prices"   on price_history for select using (true);
