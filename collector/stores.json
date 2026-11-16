@@ -2,7 +2,7 @@
   "_comment": "Seed list: Moroccan fashion stores on Shopify. Before activating a store, open https://<domain>/products.json to confirm it responds and read its terms.",
   "stores": [
     { "name": "Maison de mode", "domain": "maisondemode.ma", "gender_hint": null },
-    { "name": "Casquetta", "domain": "casquetta.ma", "gender_hint": "homme" },
+    { "name": "Casquetta", "domain": "casquetta.ma", "gender_hint": "homme", "category_hint": "accessoires" },
     { "name": "Ailawear", "domain": "ailawear.com", "gender_hint": null },
     { "name": "Odxwear", "domain": "odxwear.com", "gender_hint": null },
     { "name": "Rim Biaz", "domain": "rimbiaz.com", "gender_hint": "femme" },

@@ -7,7 +7,10 @@ type SortKey = 'score' | 'saved' | 'discount' | 'price' | 'recent';
 const number = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 
 const comparators: Record<SortKey, (a: HTMLElement, b: HTMLElement) => number> = {
-  score: (a, b) => num(b, 'score') - num(a, 'score') || num(b, 'saved') - num(a, 'saved'),
+  score: (a, b) =>
+    Number('verified' in b.dataset) - Number('verified' in a.dataset) ||
+    num(b, 'score') - num(a, 'score') ||
+    num(b, 'saved') - num(a, 'saved'),
   saved: (a, b) => num(b, 'saved') - num(a, 'saved'),
   discount: (a, b) => num(b, 'discount') - num(a, 'discount'),
   price: (a, b) => num(a, 'price') - num(b, 'price'),

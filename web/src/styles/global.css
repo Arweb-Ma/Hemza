@@ -119,6 +119,10 @@ select {
   background: var(--color-positive-soft);
   color: var(--color-positive);
 }
+.badge--neutral {
+  background: var(--color-line);
+  color: var(--color-muted);
+}
 .badge--gold {
   background: var(--color-gold-soft);
   color: var(--color-gold-ink);

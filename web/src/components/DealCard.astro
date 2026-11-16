@@ -23,6 +23,7 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
   data-score={deal.score}
   data-discount={deal.discountPct}
   data-observed={deal.observedAt}
+  data-verified={deal.verified ? '' : undefined}
   data-lowest={deal.lowest90d ? '' : undefined}
   data-search={searchText}
 >
@@ -51,11 +52,17 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
     <Sparkline values={deal.history} label="Évolution du prix sur 30 jours" />
     <p class="badges">
       {deal.lowest90d && <span class="badge badge--gold">Plus bas 90 j</span>}
-      <span class="badge">Baisse vérifiée</span>
+      {deal.verified ? (
+        <span class="badge">Baisse vérifiée</span>
+      ) : (
+        <span class="badge badge--neutral">Annoncée par la boutique</span>
+      )}
     </p>
     <p class="prices">
       <s>
-        <span class="visually-hidden">Prix habituel : </span>
+        <span class="visually-hidden">
+          {deal.verified ? 'Prix habituel' : 'Prix barré par la boutique'} :{' '}
+        </span>
         {formatMad(deal.refPrice)}
       </s>
       <span aria-hidden="true">→</span>

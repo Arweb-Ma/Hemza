@@ -47,7 +47,7 @@ CATEGORY_RULES = [
     ("accessoires", r"casquette|ceinture|bijou|montre|lunette|echarpe|foulard|cap\b|bonnet"),
 ]
 
-def classify(title, product_type, tags, gender_hint=None):
+def classify(title, product_type, tags, gender_hint=None, category_hint=None):
     text = " ".join([title or "", product_type or "", " ".join(tags or [])])
     t = _norm(text) + " " + text   # keep raw for Arabic keywords
     gender = None
@@ -56,7 +56,7 @@ def classify(title, product_type, tags, gender_hint=None):
             gender = g
             break
     gender = gender or gender_hint or "unisexe"
-    category = next((c for c, rx in CATEGORY_RULES if re.search(rx, t)), "autres")
+    category = next((c for c, rx in CATEGORY_RULES if re.search(rx, t)), category_hint or "autres")
     return gender, category
 
 # ---------- Shopify feed ----------
@@ -102,7 +102,7 @@ def fetch_shopify(domain):
         time.sleep(POLITE_DELAY)
     return out, True
 
-def normalize(domain, p, gender_hint=None):
+def normalize(domain, p, gender_hint=None, category_hint=None):
     variants = p.get("variants") or []
     if not variants:
         return None
@@ -112,7 +112,7 @@ def normalize(domain, p, gender_hint=None):
     price = float(best["price"])
     cmp_ = best.get("compare_at_price")
     cmp_ = float(cmp_) if cmp_ not in (None, "", "0.00") else None
-    gender, category = classify(p.get("title"), p.get("product_type"), p.get("tags"), gender_hint)
+    gender, category = classify(p.get("title"), p.get("product_type"), p.get("tags"), gender_hint, category_hint)
     sizes = sorted({v.get("option1") for v in avail if v.get("option1")})[:12]
     img = (p.get("images") or [{}])[0].get("src")
     return {
@@ -213,7 +213,7 @@ def main():
             raw, complete = fetch_shopify(s["domain"])
         except requests.RequestException as e:
             print(f"  ! {e}", file=sys.stderr); failed.append(s["domain"]); continue
-        items = [n for p in raw if (n := normalize(s["domain"], p, s.get("gender_hint")))]
+        items = [n for p in raw if (n := normalize(s["domain"], p, s.get("gender_hint"), s.get("category_hint")))]
         if not items:
             failed.append(s["domain"]); continue
         ok += 1

@@ -83,7 +83,13 @@ select p.*, s.name as store_name, s.affiliate_tpl,
        case when c.compare_at > c.price then round(100 * (1 - c.price / c.compare_at))::int end as claimed_disc_pct,
        (c.price <= l.min_90d) as lowest_90d,
        (c.compare_at > 0 and c.price <= c.compare_at * 0.7
-         and h.n_obs >= 5 and c.price >= h.median_30d * 0.98) as fake_promo
+         and h.n_obs >= 5 and c.price >= h.median_30d * 0.98) as fake_promo,
+       -- verified = we have enough of our own history to judge the drop ourselves
+       (coalesce(h.n_obs, 0) >= 5) as verified,
+       -- share of the store's in-stock catalog that carries a crossed-out price.
+       -- When a large part of a shop is permanently "on sale", its claims mean little.
+       round((count(*) filter (where c.compare_at > c.price) over (partition by p.store_id))::numeric
+             / count(*) over (partition by p.store_id), 2) as store_promo_share
 from cur c
 join products p on p.id = c.product_id
 join stores   s on s.id = p.store_id
@@ -91,8 +97,12 @@ left join hist  h on h.product_id = c.product_id
 left join low90 l on l.product_id = c.product_id
 where c.in_stock and s.active;
 
+-- Columns are listed explicitly so new ones can be appended without recreating the view.
 create or replace view deals with (security_invoker = true) as
-select *,
+select id, store_id, external_id, handle, title, brand, gender, category, image_url, product_url,
+       sizes, in_stock, first_seen_at, last_seen_at, store_name, affiliate_tpl,
+       price, compare_at, observed_at, median_30d, n_obs, min_90d,
+       real_disc_pct, claimed_disc_pct, lowest_90d, fake_promo,
   -- dirhams saved vs our reference price (30-day median, else the store's own "was" price)
   round(coalesce(case when n_obs >= 5 then median_30d end, compare_at, median_30d) - price)::int as saved_mad,
   -- score 0–100: trusted discount dominates; store claim counts only when history is thin
@@ -100,11 +110,14 @@ select *,
       coalesce(real_disc_pct, 0) * 1.6
     + case when n_obs is null or n_obs < 5 then coalesce(claimed_disc_pct,0) * 0.6 else 0 end
     + case when lowest_90d then 12 else 0 end
-  ))::int as score
+  ))::int as score,
+  verified, store_promo_share
 from deal_candidates
 where not coalesce(fake_promo, false)
   and ( coalesce(real_disc_pct,0) >= 20
-     or (coalesce(n_obs,0) < 5 and coalesce(claimed_disc_pct,0) >= 30) );
+        -- not verified yet: accept the store's claim only if it is big (>= 30 %)
+        -- and the store does not have over 40 % of its catalog "on sale"
+     or (not verified and coalesce(claimed_disc_pct,0) >= 30 and store_promo_share <= 0.40) );
 
 -- Public read access for the website (anon key), writes only via service role
 alter table stores enable row level security;

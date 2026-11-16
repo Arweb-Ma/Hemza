@@ -33,6 +33,8 @@ def caption(d):
         f"{GENDER_EMOJI.get(d['gender'],'🛍️')} {d['title']}",
         (f"🏷️ {was:.0f} DH → {d['price']:.0f} DH  (-{was - d['price']:.0f} DH, -{disc}%)" if was and disc else f"🏷️ {d['price']:.0f} DH"),
     ]
+    if not d.get("verified"):
+        lines.append("ℹ️ Remise annoncée par la boutique, vérification en cours")
     if d.get("lowest_90d"):
         lines.append("📉 Prix le plus bas depuis 90 jours")
     lines += [f"🏬 {d['store_name']}", f"👉 {link(d)}", "", f"#hemza #soldes #maroc #mode{d['gender']}"]
@@ -43,10 +45,14 @@ def main():
     ap.add_argument("--min-score", type=int, default=40)
     ap.add_argument("--max", type=int, default=5)
     ap.add_argument("--review", action="store_true")
+    ap.add_argument("--include-unverified", action="store_true",
+                    help="also post promos we could not check against our own price history yet")
     a = ap.parse_args()
 
     deals = sb(f"deals?select=*&score=gte.{a.min_score}&order=score.desc&limit=50")
     posted = {(p["product_id"]): float(p["price"]) for p in sb("posts?select=product_id,price&channel=eq.telegram")}
+    if not a.include_unverified:
+        deals = [d for d in deals if d.get("verified")]
     fresh = [d for d in deals if d["id"] not in posted or float(d["price"]) < posted[d["id"]]][: a.max]
 
     for d in fresh:

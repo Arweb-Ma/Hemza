@@ -24,6 +24,8 @@ export interface Deal {
   /** 0–100, see db/schema.sql. */
   score: number;
   lowest90d: boolean;
+  /** True once our own price history is long enough to confirm the drop ourselves. */
+  verified: boolean;
   /** Daily prices, oldest first, ending with the current price. */
   history: number[];
   sizes: string[];

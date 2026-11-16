@@ -31,4 +31,6 @@ export function categoriesIn(deals: readonly Deal[]): Category[] {
   return CATEGORIES.filter((category) => present.has(category));
 }
 
-export const byScore = (a: Deal, b: Deal): number => b.score - a.score || b.savedMad - a.savedMad;
+/** Verified drops always come before promos we only know from the store. */
+export const byScore = (a: Deal, b: Deal): number =>
+  Number(b.verified) - Number(a.verified) || b.score - a.score || b.savedMad - a.savedMad;

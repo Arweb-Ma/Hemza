@@ -126,6 +126,7 @@ export function buildDemoFeed(now: Date = new Date(), seed = 42): DemoFeed {
           savedMad: refPrice - price,
           score: computeScore(discountPct, lowest90d),
           lowest90d,
+          verified: true,
           history: [...history, price],
           sizes: sizesFor(gender, category),
           imageUrl: null,

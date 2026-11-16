@@ -15,7 +15,7 @@
 
 ## Scoring
 - Reference price = median of the last 30 days (excluding the last 24 h).
-- Published if the real drop is ≥ 20 %, or (if there are < 5 data points yet) the store's advertised discount is ≥ 30 %.
+- Verified = at least 5 price points of our own. Published if the real drop is ≥ 20 %. Not verified yet: published (labelled "annoncée par la boutique", ranked last, not posted to Telegram) only if the store's advertised discount is ≥ 30 % and no more than 40 % of that store's catalog is "on sale".
 - Fake promo = store claims ≥ 30 % off, but the price is not lower than its 30-day median → hidden.
 - Score = real % × 1.6 + 12 if lowest price in 90 days (capped at 100).
 

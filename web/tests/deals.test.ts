@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { categoriesIn, computeScore, filterDeals, inSection, scoreLevel } from '@/lib/deals';
+import {
+  byScore,
+  categoriesIn,
+  computeScore,
+  filterDeals,
+  inSection,
+  scoreLevel,
+} from '@/lib/deals';
 import { buildDemoFeed } from '@/lib/demo';
 import { formatMad, pluralize, timeAgo } from '@/lib/format';
 import { sparkline } from '@/lib/sparkline';
@@ -20,6 +27,7 @@ const deal = (overrides: Partial<Deal>): Deal => ({
   savedMad: 600,
   score: 86,
   lowest90d: true,
+  verified: true,
   history: [1300, 700],
   sizes: [],
   imageUrl: null,
@@ -120,6 +128,7 @@ describe('database rows', () => {
   it('uses our own median once there is enough history', () => {
     const parsed = toDeal(row, [1300, 1300, 700])!;
     expect(parsed).toMatchObject({ price: 700, refPrice: 1300, discountPct: 46, savedMad: 600 });
+    expect(parsed.verified).toBe(true);
     expect(parsed.productUrl).toBe('https://example.ma/products/veste?utm_source=hemza');
   });
   it('falls back to the store price while history is thin', () => {
@@ -128,6 +137,7 @@ describe('database rows', () => {
       [],
     )!;
     expect(parsed.refPrice).toBe(1500);
+    expect(parsed.verified).toBe(false);
     expect(parsed.history).toEqual([1500, 700]);
   });
   it('rejects unsafe links and non-drops', () => {
@@ -143,6 +153,14 @@ describe('database rows', () => {
   });
   it('maps unknown categories to "autres"', () => {
     expect(toDeal({ ...row, category: 'mystere' }, [])!.category).toBe('autres');
+  });
+});
+
+describe('ordering', () => {
+  it('ranks verified drops above unverified store claims, whatever the score', () => {
+    const claim = deal({ id: 1, verified: false, score: 95 });
+    const checked = deal({ id: 2, verified: true, score: 40 });
+    expect([claim, checked].sort(byScore).map((d) => d.id)).toEqual([2, 1]);
   });
 });
 

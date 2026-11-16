@@ -63,7 +63,7 @@ const productJsonLd = {
 
 <BaseLayout
   title={`${deal.title} à ${formatMad(deal.price)} (-${deal.discountPct}%) chez ${deal.storeName}`}
-  description={`${deal.title} : ${formatMad(deal.refPrice)} → ${formatMad(deal.price)} chez ${deal.storeName}. Vous économisez ${formatMad(deal.savedMad)}. Baisse de prix vérifiée sur 30 jours.`}
+  description={`${deal.title} : ${formatMad(deal.refPrice)} → ${formatMad(deal.price)} chez ${deal.storeName}. Vous économisez ${formatMad(deal.savedMad)}. ${deal.verified ? 'Baisse de prix vérifiée sur 30 jours.' : 'Remise annoncée par la boutique.'}`}
   structuredData={[
     breadcrumbJsonLd(crumbs, Astro.site, Astro.url.pathname),
     ...(isDemo ? [] : [productJsonLd]),
@@ -92,7 +92,9 @@ const productJsonLd = {
         <h1>{deal.title}</h1>
         <p class="prices">
           <s>
-            <span class="visually-hidden">Prix habituel : </span>
+            <span class="visually-hidden">
+              {deal.verified ? 'Prix habituel' : 'Prix barré par la boutique'} :{' '}
+            </span>
             {formatMad(deal.refPrice)}
           </s>
           <span aria-hidden="true">→</span>
@@ -105,9 +107,11 @@ const productJsonLd = {
         <p class="saving">Vous économisez {formatMad(deal.savedMad)}</p>
         <p class="why">
           <strong data-level={scoreLevel(deal.score)}>Score {deal.score}/100.</strong>{' '}
-          {storeOverstates
-            ? `La boutique affiche -${deal.claimedDiscountPct}% (prix barré ${formatMad(deal.claimedPrice!)}), mais la baisse réelle mesurée est de -${deal.discountPct}%.`
-            : 'La remise correspond à la baisse réelle mesurée sur notre historique.'}
+          {!deal.verified
+            ? 'Cette remise est annoncée par la boutique. Nous suivons cet article depuis trop peu de temps pour la confirmer avec notre propre historique de prix.'
+            : storeOverstates
+              ? `La boutique affiche -${deal.claimedDiscountPct}% (prix barré ${formatMad(deal.claimedPrice!)}), mais la baisse réelle mesurée est de -${deal.discountPct}%.`
+              : 'La remise correspond à la baisse réelle mesurée sur notre historique.'}
           {deal.lowest90d && " C'est le prix le plus bas depuis 90 jours."}
         </p>
         {deal.sizes.length > 0 && (

@@ -94,6 +94,7 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
     savedMad: row.saved_mad ?? Math.round(refPrice - price),
     score: row.score ?? computeScore(discountPct, lowest90d),
     lowest90d,
+    verified: trusted,
     history: history.length > 1 ? history : [refPrice, price],
     sizes: row.sizes ?? [],
     imageUrl: safeUrl(row.image_url),
