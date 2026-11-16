@@ -9,7 +9,7 @@
 
 ## Go-live
 1. Supabase: project `hemza` (ref `tcsjfqkreqceektalogu`, eu-west-1) already has `db/schema.sql` applied.
-2. Collector: `pip install requests`, set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`, run `python collector/collect.py --dry-run`, then for real. Schedule it every 6 h (GitHub Actions cron or a VPS cron).
+2. Collector: `pip install requests`, set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`, run `python collector/collect.py --dry-run`, then for real. It is slow on purpose (about one request a minute, slower when stores refuse) and saves page by page. Run it once or twice a day from a home connection; cloud servers are refused by Shopify. Tests: `python collector/test_collect.py`.
 3. Site: `cd web && cp .env.example .env && npm install && npm run deploy`. It shows demo data until the `deals` view returns rows; rebuild after each collection. Real product images load from the stores' CDNs.
 4. Telegram: create the channel and a bot via @BotFather, add the bot as channel admin, then run `post_deals.py --review` and, once you're happy with it, without `--review`.
 

@@ -9,18 +9,26 @@ Usage:
   python collect.py --dry-run                # print what would be saved
   python collect.py --sample sample.json     # classify a local products.json (offline test)
 
-Run it every 6h (cron, GitHub Actions or a Cloudflare Worker cron).
+It is deliberately slow: one request about every minute, slower when stores refuse.
+A full run can take from 15 minutes to 3 hours. Run it once or twice a day.
+  python collect.py --only casquetta.ma      # one store
+  python collect.py --max-minutes 60         # stop after an hour
 """
 import argparse, json, os, re, sys, time, unicodedata
+from collections import deque
 from datetime import datetime, timezone
 import requests
 
 UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
 PAGE_LIMIT = 250
-POLITE_DELAY = 5.0      # seconds between two requests (pages or stores)
 MAX_PAGES = 20
-MAX_RETRIES = 3         # after a "slow down" answer (HTTP 429)
-MAX_WAIT = 120          # never wait longer than this for one retry, in seconds
+
+# Pacing. Shopify throttles unknown crawlers across ALL its stores at once, so the pace is
+# global, not per store: one request, then a pause, whichever store comes next.
+START_GAP = 60          # seconds between two requests at the start of a run
+MIN_GAP = 30            # never go faster than this, even when everything works
+MAX_GAP = 900           # never wait longer than 15 minutes for one request
+MAX_ATTEMPTS = 3        # tries per store per run; a refused store goes to the back of the queue
 
 # ---------- classification (FR / EN / Darija-AR keywords) ----------
 def _norm(s: str) -> str:
@@ -60,47 +68,51 @@ def classify(title, product_type, tags, gender_hint=None, category_hint=None):
     return gender, category
 
 # ---------- Shopify feed ----------
-class Throttled(Exception):
-    """The store asked us to slow down and did not let us in after polite retries."""
+class Pacer:
+    """Spaces out requests and adapts: slower after every refusal, slowly faster after successes."""
+    def __init__(self, start=START_GAP, low=MIN_GAP, high=MAX_GAP, sleep=None, clock=None):
+        self.gap, self.low, self.high = start, low, high
+        self._sleep, self._clock, self._last = sleep or time.sleep, clock or time.monotonic, None
 
-def get_page(url):
-    """GET one page. On HTTP 429/430 wait as long as the server asks (Retry-After), then retry."""
-    for attempt in range(MAX_RETRIES + 1):
+    def wait(self):
+        if self._last is not None:
+            remaining = self._last + self.gap - self._clock()
+            if remaining > 0:
+                if remaining >= 90:
+                    print(f"  … waiting {remaining / 60:.0f} min before the next request")
+                self._sleep(remaining)
+        self._last = self._clock()
+
+    def success(self):
+        self.gap = max(self.low, self.gap * 0.8)
+
+    def throttled(self, retry_after=None):
+        self.gap = min(self.high, max(self.gap * 2, retry_after or 0))
+
+DIAGNOSTIC_HEADERS = ("retry-after", "server", "cf-mitigated", "cf-ray", "x-shopify-stage", "x-request-id")
+
+def describe(r):
+    """One line explaining a refusal, so we can tell a rate limit from a bot challenge."""
+    seen = [f"{h}={r.headers[h]}" for h in DIAGNOSTIC_HEADERS if h in r.headers]
+    kind = (r.headers.get("content-type") or "?").split(";")[0]
+    return f"HTTP {r.status_code} [{kind}] " + " ".join(seen)
+
+def fetch_page(domain, page):
+    """Returns ("ok", products) | ("throttled", retry_after_seconds, detail) | ("error", detail)."""
+    url = f"https://{domain}/products.json?limit={PAGE_LIMIT}&page={page}"
+    try:
         r = requests.get(url, headers={"User-Agent": UA, "Accept": "application/json"}, timeout=30)
-        if r.status_code not in (429, 430):
-            return r
-        if attempt == MAX_RETRIES:
-            break
+    except requests.RequestException as e:
+        return ("error", str(e))
+    if r.status_code in (429, 430, 503):
         asked = r.headers.get("Retry-After", "")
-        wait = min(int(asked), MAX_WAIT) if asked.isdigit() else min(30 * 2 ** attempt, MAX_WAIT)
-        print(f"  … asked to slow down, waiting {wait}s (try {attempt + 1}/{MAX_RETRIES})")
-        time.sleep(wait)
-    raise Throttled(f"HTTP {r.status_code} after {MAX_RETRIES} retries")
-
-def fetch_shopify(domain):
-    """Returns (products, complete). `complete` is False if the catalog could not be read to the end."""
-    out, page = [], 1
-    while page <= MAX_PAGES:
-        url = f"https://{domain}/products.json?limit={PAGE_LIMIT}&page={page}"
-        try:
-            r = get_page(url)
-        except Throttled as e:
-            print(f"  ! {domain} page {page}: {e}", file=sys.stderr)
-            return out, False
-        if r.status_code != 200:
-            print(f"  ! {domain} page {page}: HTTP {r.status_code}", file=sys.stderr)
-            return out, False
-        try:
-            items = r.json().get("products", [])
-        except ValueError:
-            print(f"  ! {domain}: no product feed here (not a Shopify catalog, or blocked)", file=sys.stderr)
-            return out, False
-        out.extend(items)
-        if len(items) < PAGE_LIMIT:      # last page: don't spend a request on an empty one
-            break
-        page += 1
-        time.sleep(POLITE_DELAY)
-    return out, True
+        return ("throttled", int(asked) if asked.isdigit() else None, describe(r))
+    if r.status_code != 200:
+        return ("error", describe(r))
+    try:
+        return ("ok", r.json().get("products", []))
+    except ValueError:
+        return ("error", "no product feed here (not a Shopify catalog, or a challenge page) " + describe(r))
 
 def normalize(domain, p, gender_hint=None, category_hint=None):
     variants = p.get("variants") or []
@@ -190,6 +202,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--sample", help="classify a local products.json file")
+    ap.add_argument("--only", nargs="+", metavar="DOMAIN", help="only these stores")
+    ap.add_argument("--gap", type=int, default=START_GAP, help="seconds between requests at the start (default 60)")
+    ap.add_argument("--max-minutes", type=int, default=180, help="stop after this long (default 180)")
     ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.json"))
     a = ap.parse_args()
 
@@ -204,25 +219,60 @@ def main():
 
     stores = json.load(open(a.stores, encoding="utf-8"))["stores"]
     db = None if a.dry_run else DB()
-    ok, failed = 0, []
-    for i, s in enumerate(stores):
-        if i:
-            time.sleep(POLITE_DELAY)
-        print(f"→ {s['domain']}")
-        try:
-            raw, complete = fetch_shopify(s["domain"])
-        except requests.RequestException as e:
-            print(f"  ! {e}", file=sys.stderr); failed.append(s["domain"]); continue
-        items = [n for p in raw if (n := normalize(s["domain"], p, s.get("gender_hint"), s.get("category_hint")))]
-        if not items:
-            failed.append(s["domain"]); continue
-        ok += 1
-        note = "" if complete else " (partial catalog)"
+    if a.only:
+        stores = [s for s in stores if s["domain"] in a.only]
+    pacer = Pacer(start=a.gap, sleep=lambda s: time.sleep(s), clock=lambda: time.monotonic())
+    deadline = time.monotonic() + a.max_minutes * 60
+    totals = {s["domain"]: 0 for s in stores}
+    done, gave_up = set(), {}
+    queue = deque((s, 1, 0) for s in stores)          # (store, page, attempts)
+
+    while queue:
+        if time.monotonic() + pacer.gap > deadline and pacer._last is not None:
+            print(f"\nTime budget of {a.max_minutes} min reached: stopping here.")
+            break
+        s, page, attempts = queue.popleft()
+        domain = s["domain"]
+        pacer.wait()
+        print(f"→ {domain} (page {page})")
+        result = fetch_page(domain, page)
+
+        if result[0] == "throttled":
+            _, retry_after, detail = result
+            pacer.throttled(retry_after)
+            print(f"  ! refused: {detail}", file=sys.stderr)
+            if attempts + 1 < MAX_ATTEMPTS:
+                print(f"  … will come back to it later; next pause {pacer.gap / 60:.0f} min")
+                queue.append((s, page, attempts + 1))
+            else:
+                gave_up[domain] = "refused"
+            continue
+        if result[0] == "error":
+            print(f"  ! {result[1]}", file=sys.stderr)
+            gave_up[domain] = "error"
+            continue
+
+        pacer.success()
+        raw = result[1]
+        items = [n for p in raw if (n := normalize(domain, p, s.get("gender_hint"), s.get("category_hint")))]
+        totals[domain] += len(items)
         if a.dry_run:
-            print(f"  {len(items)} products{note}"); continue
-        n, changed = save(db, s, items)
-        print(f"  {n} products{note}, {changed} price rows written")
-    print(f"\nDone: {ok}/{len(stores)} stores read." + (f" No data from: {', '.join(failed)}" if failed else ""))
+            print(f"  {len(items)} products")
+        elif items:
+            n, changed = save(db, s, items)             # saved page by page: nothing is lost if we stop
+            print(f"  {n} products, {changed} price rows written")
+        if len(raw) == PAGE_LIMIT and page < MAX_PAGES:
+            queue.appendleft((s, page + 1, 0))          # finish this store before moving on
+        else:
+            done.add(domain)
+
+    print("\nSummary")
+    for s in stores:
+        d = s["domain"]
+        state = "complete" if d in done else ("partial" if totals[d] else gave_up.get(d, "not reached"))
+        print(f"  {d:22} {totals[d]:5} products  {state}")
+    read = sum(1 for d in totals if totals[d])
+    print(f"Done: {read}/{len(stores)} stores read.")
 
 if __name__ == "__main__":
     main()
