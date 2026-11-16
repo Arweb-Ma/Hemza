@@ -1,0 +1,80 @@
+---
+import DealListing from '@/components/DealListing.astro';
+import HowItWorks from '@/components/HowItWorks.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getDealFeed } from '@/lib/data';
+
+const { deals, fakePromosFiltered, generatedAt } = await getDealFeed();
+const storeCount = new Set(deals.map((deal) => deal.storeName)).size;
+const stats = [
+  { value: deals.length, label: 'promos actives' },
+  { value: storeCount, label: 'boutiques suivies' },
+  ...(fakePromosFiltered === null
+    ? []
+    : [{ value: fakePromosFiltered, label: 'fausses promos écartées' }]),
+];
+---
+
+<BaseLayout>
+  <div class="container page">
+    <section class="hero">
+      <h1 class="display">
+        Les <em>vraies</em> promos mode au Maroc, vérifiées chaque jour.
+      </h1>
+      <p class="lead">
+        On suit le prix de chaque article dans le temps. Une promo n'apparaît ici que si le prix a
+        vraiment baissé, pas seulement parce que la boutique affiche « -70% ».
+      </p>
+      <dl class="stats">
+        {stats.map(({ value, label }) => (
+          <div>
+            <dt>{label}</dt>
+            <dd class="display">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+    <DealListing deals={deals} updatedAt={generatedAt} />
+    <HowItWorks />
+  </div>
+</BaseLayout>
+
+<style>
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    padding-top: var(--space-6);
+  }
+  h1 {
+    max-width: 47.5rem;
+    font-size: var(--text-display);
+  }
+  h1 em {
+    font-style: normal;
+    color: var(--color-accent);
+  }
+  .lead {
+    max-width: 38.75rem;
+    margin-top: var(--space-3);
+    font-size: var(--text-md);
+    color: var(--color-muted);
+  }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+    margin: var(--space-4) 0 0;
+  }
+  .stats div {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  .stats dt {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .stats dd {
+    font-size: 1.5rem;
+  }
+</style>

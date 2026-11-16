@@ -1,0 +1,57 @@
+---
+import { CATEGORY_LABEL, type Category, type Section } from '@/config/site';
+
+interface Props {
+  section: Section;
+  categories: Category[];
+  current?: Category;
+}
+const { section, categories, current } = Astro.props;
+---
+
+<nav aria-label="Catégories">
+  <ul class="chips">
+    <li>
+      <a href={`/${section}/`} aria-current={current ? undefined : 'page'}>
+        Tout
+      </a>
+    </li>
+    {categories.map((category) => (
+      <li>
+        <a
+          href={`/${section}/${category}/`}
+          aria-current={category === current ? 'page' : undefined}
+        >
+          {CATEGORY_LABEL[category]}
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>
+
+<style>
+  .chips {
+    display: flex;
+    gap: 0.375rem;
+    margin: 0;
+    padding-block: var(--space-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  a {
+    display: block;
+    padding: 0.4375rem 0.8125rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+  a:hover,
+  a[aria-current='page'] {
+    background: var(--color-accent);
+    color: #fff;
+  }
+</style>

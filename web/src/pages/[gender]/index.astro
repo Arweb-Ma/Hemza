@@ -1,0 +1,45 @@
+---
+import type { GetStaticPaths } from 'astro';
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import CategoryChips from '@/components/CategoryChips.astro';
+import DealListing from '@/components/DealListing.astro';
+import { SECTIONS, SECTION_LABEL, type Section } from '@/config/site';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getDealFeed } from '@/lib/data';
+import { categoriesIn, filterDeals } from '@/lib/deals';
+import { breadcrumbJsonLd } from '@/lib/seo';
+
+export const getStaticPaths = (() =>
+  SECTIONS.map((section) => ({ params: { gender: section } }))) satisfies GetStaticPaths;
+
+const section = Astro.params.gender as Section;
+const label = SECTION_LABEL[section];
+const { deals: allDeals, generatedAt } = await getDealFeed();
+const deals = filterDeals(allDeals, { section });
+const crumbs = [{ label: 'Accueil', href: '/' }, { label }];
+---
+
+<BaseLayout
+  title={`Promos mode ${label.toLowerCase()} au Maroc`}
+  description={`Les vraies baisses de prix sur la mode ${label.toLowerCase()} au Maroc : historique des prix sur 30 jours et fausses promos filtrées.`}
+  structuredData={[breadcrumbJsonLd(crumbs, Astro.site, Astro.url.pathname)]}
+>
+  <div class="container page">
+    <Breadcrumb items={crumbs} />
+    <h1 class="display">Promos mode {label.toLowerCase()}</h1>
+    <CategoryChips section={section} categories={categoriesIn(deals)} />
+    <DealListing deals={deals} updatedAt={generatedAt} heading={`Promos ${label.toLowerCase()}`} />
+  </div>
+</BaseLayout>
+
+<style>
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding-top: var(--space-5);
+  }
+  h1 {
+    font-size: var(--text-xl);
+  }
+</style>

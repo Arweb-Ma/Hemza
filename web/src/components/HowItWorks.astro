@@ -1,0 +1,76 @@
+---
+interface Props {
+  headingLevel?: 'h1' | 'h2';
+}
+const { headingLevel: Heading = 'h2' } = Astro.props;
+const steps = [
+  {
+    title: 'On relève les prix',
+    text: 'Les catalogues des boutiques suivies sont lus toutes les 6 heures et chaque prix est enregistré.',
+  },
+  {
+    title: "On compare à l'historique",
+    text: 'Le prix du jour est comparé au prix médian des 30 derniers jours, pas au « prix barré » affiché par la boutique.',
+  },
+  {
+    title: 'On écarte les fausses promos',
+    text: "Un « -50% » dont le prix n'a jamais bougé est filtré. Seules les vraies baisses de 20% ou plus sont publiées.",
+  },
+];
+---
+
+<section class="how" aria-labelledby="how-title">
+  <Heading id="how-title" class="display">
+    Comment on repère une vraie promo
+  </Heading>
+  <ol class="steps">
+    {steps.map((step) => (
+      <li>
+        <h3>{step.title}</h3>
+        <p>{step.text}</p>
+      </li>
+    ))}
+  </ol>
+</section>
+
+<style>
+  .how {
+    padding: var(--space-6) var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+  .display {
+    font-size: var(--text-xl);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: var(--space-5);
+    margin: var(--space-5) 0 0;
+    counter-reset: step;
+  }
+  li {
+    counter-increment: step;
+  }
+  li::before {
+    content: counter(step);
+    display: grid;
+    place-items: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    margin-bottom: var(--space-2);
+    border-radius: 50%;
+    font-weight: 700;
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+  h3 {
+    font-size: var(--text-base);
+  }
+  p {
+    margin-top: var(--space-1);
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+</style>

@@ -1,0 +1,76 @@
+---
+import DealCard from './DealCard.astro';
+import FilterBar from './FilterBar.astro';
+import { pluralize, timeAgo } from '@/lib/format';
+import type { Deal } from '@/lib/types';
+
+interface Props {
+  deals: Deal[];
+  /** When the data was last refreshed (ISO). */
+  updatedAt: string;
+  heading?: string;
+}
+const { deals, updatedAt, heading = 'Promos du moment' } = Astro.props;
+const maxPrice = Math.max(
+  500,
+  Math.ceil(Math.max(0, ...deals.map((deal) => deal.price)) / 100) * 100,
+);
+const EAGER_IMAGES = 4;
+---
+
+<section class="listing" aria-labelledby="listing-title">
+  <h2 id="listing-title" class="visually-hidden">
+    {heading}
+  </h2>
+  {deals.length > 0 && <FilterBar maxPrice={maxPrice} />}
+  <p class="meta">
+    <span data-deal-count aria-live="polite">
+      {pluralize(deals.length, 'promo')}
+    </span>
+    <span>
+      Mis à jour <time datetime={updatedAt}>{timeAgo(updatedAt)}</time>
+    </span>
+  </p>
+  <div class="grid" data-deal-grid>
+    {deals.map((deal, index) => (
+      <DealCard deal={deal} priority={index < EAGER_IMAGES} />
+    ))}
+  </div>
+  <p class="empty" data-deal-empty hidden={deals.length > 0}>
+    Aucune promo ne correspond pour le moment. Revenez bientôt, les prix sont relevés toutes les 6
+    heures.
+  </p>
+</section>
+
+<style>
+  .listing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-line);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: var(--space-4);
+  }
+  .empty {
+    padding-block: var(--space-7);
+    text-align: center;
+    color: var(--color-muted);
+  }
+  @media (max-width: 38.75em) {
+    .grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.625rem;
+    }
+  }
+</style>

@@ -1,0 +1,47 @@
+---
+import { SITE } from '@/config/site';
+---
+
+<footer class="site-footer">
+  <div class="container">
+    <nav aria-label="Liens utiles">
+      <ul class="links">
+        <li>
+          <a href="/comment-ca-marche/">Comment ça marche</a>
+        </li>
+        {SITE.telegramUrl && (
+          <li>
+            <a href={SITE.telegramUrl} rel="noopener">
+              Chaîne Telegram
+            </a>
+          </li>
+        )}
+      </ul>
+    </nav>
+    <p>
+      {SITE.name}, un produit Arweb. Certains liens sont affiliés : si vous achetez, la boutique
+      peut nous verser une commission, sans surcoût pour vous. Les prix peuvent changer, vérifiez
+      toujours sur le site de la boutique.
+    </p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: var(--space-7);
+    padding-block: var(--space-5) var(--space-7);
+    border-top: 1px solid var(--color-line);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
+    font-weight: 600;
+  }
+  p {
+    max-width: 46rem;
+  }
+</style>

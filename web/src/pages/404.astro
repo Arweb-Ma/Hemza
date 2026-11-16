@@ -1,0 +1,29 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Page introuvable" noindex>
+  <div class="container page">
+    <h1 class="display">Cette page n'existe plus.</h1>
+    <p>La promo est peut-être terminée : les prix changent vite.</p>
+    <a class="button" href="/">
+      Voir les promos du moment
+    </a>
+  </div>
+</BaseLayout>
+
+<style>
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: var(--space-4);
+    padding-block: var(--space-7);
+  }
+  h1 {
+    font-size: var(--text-xl);
+  }
+  p {
+    color: var(--color-muted);
+  }
+</style>

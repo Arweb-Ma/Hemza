@@ -1,0 +1,22 @@
+---
+import type { Category } from '@/config/site';
+import { garmentArt } from '@/lib/garment-art';
+
+interface Props {
+  category: Category;
+  seed: number;
+  class?: string;
+}
+const { category, seed, class: className } = Astro.props;
+const art = garmentArt(category, seed);
+---
+
+<svg
+  class={className}
+  viewBox="0 0 200 220"
+  preserveAspectRatio="xMidYMid slice"
+  aria-hidden="true"
+>
+  <rect width="200" height="220" fill={art.background}></rect>
+  <g fill={art.foreground} color={art.foreground} set:html={art.shape} />
+</svg>

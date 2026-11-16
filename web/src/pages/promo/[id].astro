@@ -1,0 +1,270 @@
+---
+import type { GetStaticPaths, InferGetStaticPropsType } from 'astro';
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import DealCard from '@/components/DealCard.astro';
+import GarmentArt from '@/components/GarmentArt.astro';
+import Sparkline from '@/components/Sparkline.astro';
+import { CATEGORY_LABEL, SECTION_LABEL, type Section } from '@/config/site';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getDealFeed } from '@/lib/data';
+import { scoreLevel } from '@/lib/deals';
+import { formatMad, timeAgo } from '@/lib/format';
+import { breadcrumbJsonLd } from '@/lib/seo';
+
+export const getStaticPaths = (async () => {
+  const { deals, source } = await getDealFeed();
+  return deals.map((deal) => ({
+    params: { id: String(deal.id) },
+    props: {
+      deal,
+      isDemo: source === 'demo',
+      related: deals
+        .filter((other) => other.id !== deal.id && other.category === deal.category)
+        .slice(0, 4),
+    },
+  }));
+}) satisfies GetStaticPaths;
+
+type Props = InferGetStaticPropsType<typeof getStaticPaths>;
+const { deal, related, isDemo } = Astro.props;
+
+const section: Section = deal.gender === 'unisexe' ? 'femme' : deal.gender;
+const categoryLabel = CATEGORY_LABEL[deal.category];
+const crumbs = [
+  { label: 'Accueil', href: '/' },
+  { label: SECTION_LABEL[section], href: `/${section}/` },
+  { label: categoryLabel, href: `/${section}/${deal.category}/` },
+  { label: deal.title },
+];
+
+const storeOverstates =
+  deal.claimedPrice !== null &&
+  deal.claimedDiscountPct !== null &&
+  deal.claimedDiscountPct > deal.discountPct + 3;
+const lowest = Math.min(...deal.history);
+const highest = Math.max(...deal.history);
+
+const productJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: deal.title,
+  category: categoryLabel,
+  ...(deal.imageUrl ? { image: deal.imageUrl } : {}),
+  offers: {
+    '@type': 'Offer',
+    price: deal.price,
+    priceCurrency: 'MAD',
+    availability: 'https://schema.org/InStock',
+    url: deal.productUrl,
+    seller: { '@type': 'Organization', name: deal.storeName },
+  },
+};
+---
+
+<BaseLayout
+  title={`${deal.title} à ${formatMad(deal.price)} (-${deal.discountPct}%) chez ${deal.storeName}`}
+  description={`${deal.title} : ${formatMad(deal.refPrice)} → ${formatMad(deal.price)} chez ${deal.storeName}. Vous économisez ${formatMad(deal.savedMad)}. Baisse de prix vérifiée sur 30 jours.`}
+  structuredData={[
+    breadcrumbJsonLd(crumbs, Astro.site, Astro.url.pathname),
+    ...(isDemo ? [] : [productJsonLd]),
+  ]}
+>
+  <div class="container page">
+    <Breadcrumb items={crumbs} />
+    <article class="deal">
+      {deal.imageUrl ? (
+        <img
+          class="media"
+          src={deal.imageUrl}
+          alt={deal.title}
+          width="600"
+          height="750"
+          fetchpriority="high"
+          referrerpolicy="no-referrer"
+        />
+      ) : (
+        <GarmentArt class="media" category={deal.category} seed={deal.id} />
+      )}
+      <div class="summary">
+        <p class="store">
+          {deal.storeName} · {categoryLabel}
+        </p>
+        <h1>{deal.title}</h1>
+        <p class="prices">
+          <s>
+            <span class="visually-hidden">Prix habituel : </span>
+            {formatMad(deal.refPrice)}
+          </s>
+          <span aria-hidden="true">→</span>
+          <strong>
+            <span class="visually-hidden">Prix actuel : </span>
+            {formatMad(deal.price)}
+          </strong>
+          <span class="badge">-{deal.discountPct}%</span>
+        </p>
+        <p class="saving">Vous économisez {formatMad(deal.savedMad)}</p>
+        <p class="why">
+          <strong data-level={scoreLevel(deal.score)}>Score {deal.score}/100.</strong>{' '}
+          {storeOverstates
+            ? `La boutique affiche -${deal.claimedDiscountPct}% (prix barré ${formatMad(deal.claimedPrice!)}), mais la baisse réelle mesurée est de -${deal.discountPct}%.`
+            : 'La remise correspond à la baisse réelle mesurée sur notre historique.'}
+          {deal.lowest90d && " C'est le prix le plus bas depuis 90 jours."}
+        </p>
+        {deal.sizes.length > 0 && (
+          <p class="sizes">Tailles disponibles : {deal.sizes.join(' · ')}</p>
+        )}
+        <a class="button cta" href={deal.productUrl} rel="sponsored nofollow noopener">
+          Voir chez {deal.storeName}
+          <span aria-hidden="true">→</span>
+        </a>
+        <p class="checked">
+          Prix relevé <time datetime={deal.observedAt}>{timeAgo(deal.observedAt)}</time>. Il peut
+          avoir changé depuis.
+        </p>
+      </div>
+      <figure class="chart">
+        <figcaption>Prix sur 30 jours</figcaption>
+        <Sparkline
+          values={deal.history}
+          width={600}
+          height={90}
+          label={`Prix sur 30 jours : de ${formatMad(highest)} au plus haut à ${formatMad(lowest)} au plus bas`}
+        />
+        <p class="range">
+          <span>Plus haut : {formatMad(highest)}</span>
+          <span>Plus bas : {formatMad(lowest)}</span>
+        </p>
+      </figure>
+    </article>
+
+    {related.length > 0 && (
+      <section aria-labelledby="related-title">
+        <h2 id="related-title" class="display">
+          Autres promos : {categoryLabel.toLowerCase()}
+        </h2>
+        <div class="related">
+          {related.map((other) => (
+            <DealCard deal={other} />
+          ))}
+        </div>
+      </section>
+    )}
+  </div>
+</BaseLayout>
+
+<style>
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+    padding-top: var(--space-5);
+  }
+  .deal {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    gap: var(--space-5) var(--space-6);
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+  .media {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    background: var(--color-line);
+  }
+  .summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .store {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+  h1 {
+    font-size: var(--text-lg);
+    line-height: 1.25;
+  }
+  .prices {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    color: var(--color-muted);
+  }
+  .prices strong {
+    font-size: var(--text-xl);
+    color: var(--color-ink);
+  }
+  .saving {
+    font-weight: 700;
+    color: var(--color-accent-strong);
+  }
+  .why,
+  .sizes,
+  .checked {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+  .why strong {
+    color: var(--color-accent-strong);
+  }
+  .why strong[data-level='medium'] {
+    color: var(--color-gold-ink);
+  }
+  .why strong[data-level='high'] {
+    color: var(--color-positive);
+  }
+  .cta {
+    align-self: stretch;
+    margin-top: var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+  .chart {
+    grid-column: 1 / -1;
+    --sparkline-height: 5.5rem;
+  }
+  .chart figcaption {
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .range {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+  h2 {
+    font-size: var(--text-lg);
+  }
+  .related {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+  @media (max-width: 38.75em) {
+    .deal {
+      grid-template-columns: 1fr;
+      padding: var(--space-4);
+    }
+    .media {
+      max-height: 20rem;
+    }
+    .related {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.625rem;
+    }
+  }
+</style>

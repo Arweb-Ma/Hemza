@@ -1,0 +1,46 @@
+---
+import { sparkline } from '@/lib/sparkline';
+
+interface Props {
+  values: number[];
+  width?: number;
+  height?: number;
+  label: string;
+}
+const { values, width = 180, height = 26, label } = Astro.props;
+const geometry = sparkline(values, width, height);
+---
+
+{geometry && (
+  <svg
+    class="sparkline"
+    viewBox={`0 0 ${width} ${height}`}
+    preserveAspectRatio="none"
+    role="img"
+    aria-label={label}
+  >
+    <path d={geometry.path} />
+    <path class="end" d={`M${geometry.end.x} ${geometry.end.y}h0`} />
+  </svg>
+)}
+
+<style>
+  .sparkline {
+    width: 100%;
+    height: var(--sparkline-height, 1.625rem);
+    overflow: visible;
+  }
+  path {
+    fill: none;
+    stroke: var(--color-positive);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  /* A zero-length round-capped stroke stays a circle even when the chart is stretched. */
+  .end {
+    stroke: var(--color-accent);
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+</style>

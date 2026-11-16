@@ -5,12 +5,12 @@
 - `collector/collect.py` — reads public Shopify `/products.json` feeds, classifies femme/homme/enfant + category (FR/EN/Darija-Arabic), writes prices to Supabase.
 - `collector/stores.yaml` — seed store list (verify each one first).
 - `collector/post_deals.py` — posts top deals to a Telegram channel; `--review` prints them for manual approval.
-- `site/index.html` — the website. Runs on demo data until `SUPABASE_URL` / `SUPABASE_ANON` are filled in.
+- `web/` — the website (Astro + TypeScript, static, deployed to Cloudflare). See `web/README.md`.
 
 ## Go-live
 1. Supabase: project `hemza` (ref `tcsjfqkreqceektalogu`, eu-west-1) already has `db/schema.sql` applied.
 2. Collector: `pip install requests pyyaml`, set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`, run `python collector/collect.py --dry-run`, then for real. Schedule it every 6 h (GitHub Actions cron or a VPS cron).
-3. Site: `site/index.html` already points at the Supabase project (publishable key, read-only). It shows demo data until the `deals` view returns rows. Deploy to Cloudflare Pages. Real product images load from the stores' CDNs.
+3. Site: `cd web && cp .env.example .env && npm install && npm run deploy`. It shows demo data until the `deals` view returns rows; rebuild after each collection. Real product images load from the stores' CDNs.
 4. Telegram: create the channel and a bot via @BotFather, add the bot as channel admin, then run `post_deals.py --review` and, once you're happy with it, without `--review`.
 
 ## Scoring

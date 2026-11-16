@@ -1,0 +1,67 @@
+---
+import type { GetStaticPaths } from 'astro';
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import CategoryChips from '@/components/CategoryChips.astro';
+import DealListing from '@/components/DealListing.astro';
+import {
+  CATEGORY_LABEL,
+  SECTIONS,
+  SECTION_LABEL,
+  type Category,
+  type Section,
+} from '@/config/site';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getDealFeed } from '@/lib/data';
+import { categoriesIn, filterDeals } from '@/lib/deals';
+import { breadcrumbJsonLd } from '@/lib/seo';
+
+/** One page per section/category pair that currently has deals. */
+export const getStaticPaths = (async () => {
+  const { deals } = await getDealFeed();
+  return SECTIONS.flatMap((section) =>
+    categoriesIn(filterDeals(deals, { section })).map((category) => ({
+      params: { gender: section, category },
+    })),
+  );
+}) satisfies GetStaticPaths;
+
+const section = Astro.params.gender as Section;
+const category = Astro.params.category as Category;
+const sectionLabel = SECTION_LABEL[section];
+const categoryLabel = CATEGORY_LABEL[category];
+
+const { deals: allDeals, generatedAt } = await getDealFeed();
+const sectionDeals = filterDeals(allDeals, { section });
+const deals = filterDeals(sectionDeals, { category });
+const crumbs = [
+  { label: 'Accueil', href: '/' },
+  { label: sectionLabel, href: `/${section}/` },
+  { label: categoryLabel },
+];
+const heading = `${categoryLabel} ${sectionLabel.toLowerCase()} en promo`;
+---
+
+<BaseLayout
+  title={`${heading} au Maroc`}
+  description={`${categoryLabel} ${sectionLabel.toLowerCase()} : les vraies baisses de prix relevées au Maroc, avec l'historique des prix sur 30 jours.`}
+  structuredData={[breadcrumbJsonLd(crumbs, Astro.site, Astro.url.pathname)]}
+>
+  <div class="container page">
+    <Breadcrumb items={crumbs} />
+    <h1 class="display">{heading}</h1>
+    <CategoryChips section={section} categories={categoriesIn(sectionDeals)} current={category} />
+    <DealListing deals={deals} updatedAt={generatedAt} heading={heading} />
+  </div>
+</BaseLayout>
+
+<style>
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding-top: var(--space-5);
+  }
+  h1 {
+    font-size: var(--text-xl);
+  }
+</style>
