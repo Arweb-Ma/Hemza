@@ -11,6 +11,15 @@ export const SITE = {
   telegramUrl: null as string | null,
 };
 
+/**
+ * Database the site reads at build time. Both values are public: the publishable key can only
+ * read what row-level security allows. Environment variables override them (see .env.example).
+ */
+export const SUPABASE = {
+  url: 'https://tcsjfqkreqceektalogu.supabase.co',
+  publishableKey: 'sb_publishable_cCihiXDolnLBydPGaLKm3g_KNX17m2c',
+};
+
 /** Sections that get their own page. `unisexe` items are listed in femme and homme. */
 export const SECTIONS = ['femme', 'homme', 'enfant'] as const satisfies readonly Gender[];
 export type Section = (typeof SECTIONS)[number];

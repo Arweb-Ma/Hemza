@@ -19,9 +19,10 @@ readable by search engines. The only client-side script is the filter bar.
 
 ## Data
 
-Copy `.env.example` to `.env`. Both values are public and read-only. They are read **at build
-time**: if they are missing, the database is unreachable, or it has no deals yet, the build falls
-back to demo data, shows a "Prototype" banner, and marks pages `noindex`.
+The database address and publishable key are built in (`src/config/site.ts`); both are public and
+read-only, and `.env` can override them. Data is read **at build time**: if the database is
+unreachable or has no deals yet, the build falls back to demo data, shows a "Prototype" banner,
+and marks pages `noindex`.
 
 Because pages are static, the site must be rebuilt after each price collection (for example with a
 Cloudflare deploy hook called at the end of the collector run).

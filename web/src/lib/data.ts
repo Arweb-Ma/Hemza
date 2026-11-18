@@ -1,3 +1,4 @@
+import { SUPABASE } from '@/config/site';
 import { byScore } from './deals';
 import { buildDemoFeed } from './demo';
 import { fetchLiveDeals } from './supabase';
@@ -12,8 +13,8 @@ let cached: { feed: Promise<DealFeed>; at: number } | undefined;
 
 async function load(): Promise<DealFeed> {
   const generatedAt = new Date().toISOString();
-  const url = import.meta.env.SUPABASE_URL;
-  const key = import.meta.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = import.meta.env.SUPABASE_URL || SUPABASE.url;
+  const key = import.meta.env.SUPABASE_PUBLISHABLE_KEY || SUPABASE.publishableKey;
 
   if (url && key) {
     try {
