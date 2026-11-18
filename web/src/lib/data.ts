@@ -3,7 +3,12 @@ import { buildDemoFeed } from './demo';
 import { fetchLiveDeals } from './supabase';
 import type { DealFeed } from './types';
 
-let cached: Promise<DealFeed> | undefined;
+/**
+ * During a build, every page shares one fetch. In `npm run dev` the result expires after a minute,
+ * so new collector runs show up on refresh without restarting the server.
+ */
+const DEV_TTL_MS = 60_000;
+let cached: { feed: Promise<DealFeed>; at: number } | undefined;
 
 async function load(): Promise<DealFeed> {
   const generatedAt = new Date().toISOString();
@@ -21,7 +26,9 @@ async function load(): Promise<DealFeed> {
           generatedAt,
         };
       }
-      console.warn('[hemza] The database has no deals yet: building with demo data.');
+      console.warn(
+        '[hemza] The database is reachable but has no deals yet: showing demo data until the collector finds some.',
+      );
     } catch (error) {
       console.warn(
         `[hemza] Could not load live deals (${String(error)}): building with demo data.`,
@@ -44,6 +51,8 @@ async function load(): Promise<DealFeed> {
 
 /** Deals for this build. Fetched once and shared by every page. */
 export function getDealFeed(): Promise<DealFeed> {
-  cached ??= load();
-  return cached;
+  const expired =
+    import.meta.env.DEV && cached !== undefined && Date.now() - cached.at > DEV_TTL_MS;
+  if (cached === undefined || expired) cached = { feed: load(), at: Date.now() };
+  return cached.feed;
 }
