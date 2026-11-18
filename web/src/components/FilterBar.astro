@@ -4,35 +4,74 @@ import { formatMad } from '@/lib/format';
 interface Props {
   /** Upper bound of the price slider, in dirhams. */
   maxPrice: number;
+  /** Shops present in this listing, for the shop filter. */
+  stores: string[];
 }
-const { maxPrice } = Astro.props;
+const { maxPrice, stores } = Astro.props;
+const DISCOUNTS = [10, 20, 30, 50];
+const DEFAULT_DISCOUNT = 20;
 ---
 
 <!-- Enhancement only: hidden until the script runs, so the page works without JavaScript. -->
 <form class="filters" data-filters role="search" aria-label="Filtrer les promos" hidden>
-  <label class="search">
-    <span class="visually-hidden">Rechercher dans cette page</span>
-    <input type="search" name="q" placeholder="Robe, jean, baskets…" autocomplete="off" />
-  </label>
-  <label class="range">
-    <span>Prix max</span>
-    <input type="range" name="max" min="100" max={maxPrice} step="50" value={maxPrice} />
-    <output name="maxOut">{formatMad(maxPrice)}</output>
-  </label>
-  <label class="toggle">
-    <input type="checkbox" name="lowest" />
-    Prix le plus bas 90 j
-  </label>
-  <label>
-    <span class="visually-hidden">Trier</span>
-    <select name="sort">
-      <option value="score">Meilleures promos</option>
-      <option value="saved">Plus grosse économie (DH)</option>
-      <option value="discount">Plus forte remise (%)</option>
-      <option value="price">Prix croissant</option>
-      <option value="recent">Plus récentes</option>
-    </select>
-  </label>
+  <div class="row">
+    <label class="search">
+      <span class="visually-hidden">Rechercher dans cette page</span>
+      <input type="search" name="q" placeholder="Robe, jean, baskets…" autocomplete="off" />
+    </label>
+    <label>
+      <span class="visually-hidden">Trier</span>
+      <select name="sort">
+        <option value="score">Meilleures promos</option>
+        <option value="saved">Plus grosse économie (DH)</option>
+        <option value="discount">Plus forte remise (%)</option>
+        <option value="price">Prix croissant</option>
+        <option value="recent">Plus récentes</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label class="field">
+      <span>Remise min.</span>
+      <select name="minDiscount" data-default={DEFAULT_DISCOUNT}>
+        {DISCOUNTS.map((value) => (
+          <option value={value} selected={value === DEFAULT_DISCOUNT}>
+            -{value}%
+          </option>
+        ))}
+      </select>
+    </label>
+    {stores.length > 1 && (
+      <label class="field">
+        <span>Boutique</span>
+        <select name="store">
+          <option value="">Toutes ({stores.length})</option>
+          {stores.map((store) => (
+            <option value={store}>{store}</option>
+          ))}
+        </select>
+      </label>
+    )}
+    <label class="field range">
+      <span>Prix max</span>
+      <input type="range" name="max" min="100" max={maxPrice} step="50" value={maxPrice} />
+      <output name="maxOut">{formatMad(maxPrice)}</output>
+    </label>
+    <label class="toggle">
+      <input type="checkbox" name="verifiedOnly" />
+      Baisses vérifiées uniquement
+    </label>
+    <label
+      class="toggle"
+      title="Masque les boutiques dont une grande partie du catalogue est affichée en promo en permanence"
+    >
+      <input type="checkbox" name="hideAlwaysOnSale" />
+      Masquer les promos permanentes
+    </label>
+    <button type="reset" class="reset">
+      Réinitialiser
+    </button>
+  </div>
 </form>
 
 <script>
@@ -42,19 +81,22 @@ const { maxPrice } = Astro.props;
 
 <style>
   .filters {
+    display: grid;
+    gap: var(--space-3);
+    font-size: 0.84375rem;
+    color: var(--color-muted);
+  }
+  .row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3) var(--space-4);
-    font-size: 0.84375rem;
-    color: var(--color-muted);
   }
   .search {
     flex: 1 1 14rem;
   }
   input[type='search'],
   select {
-    width: 100%;
     height: 2.5rem;
     padding: 0 var(--space-3);
     border: 1px solid var(--color-line);
@@ -63,10 +105,11 @@ const { maxPrice } = Astro.props;
     color: var(--color-ink);
   }
   input[type='search'] {
+    width: 100%;
     border-radius: var(--radius-pill);
     padding-inline: var(--space-4);
   }
-  .range,
+  .field,
   .toggle {
     display: flex;
     align-items: center;
@@ -85,5 +128,23 @@ const { maxPrice } = Astro.props;
   }
   .toggle input {
     accent-color: var(--color-positive);
+  }
+  .reset {
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-weight: 600;
+    text-decoration: underline;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+  @media (max-width: 38.75em) {
+    .row:last-child {
+      gap: var(--space-2) var(--space-3);
+    }
+    .reset {
+      margin-left: 0;
+    }
   }
 </style>

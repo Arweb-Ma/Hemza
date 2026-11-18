@@ -28,6 +28,7 @@ const deal = (overrides: Partial<Deal>): Deal => ({
   score: 86,
   lowest90d: true,
   verified: true,
+  alwaysOnSale: false,
   history: [1300, 700],
   sizes: [],
   imageUrl: null,
@@ -117,6 +118,7 @@ describe('database rows', () => {
     real_disc_pct: 46,
     claimed_disc_pct: 53,
     saved_mad: 600,
+    store_promo_share: '0.72',
     score: 86,
     lowest_90d: true,
     sizes: ['M'],
@@ -129,6 +131,7 @@ describe('database rows', () => {
     const parsed = toDeal(row, [1300, 1300, 700])!;
     expect(parsed).toMatchObject({ price: 700, refPrice: 1300, discountPct: 46, savedMad: 600 });
     expect(parsed.verified).toBe(true);
+    expect(parsed.alwaysOnSale).toBe(true);
     expect(parsed.productUrl).toBe('https://example.ma/products/veste?utm_source=hemza');
   });
   it('falls back to the store price while history is thin', () => {

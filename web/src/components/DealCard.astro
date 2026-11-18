@@ -24,6 +24,8 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
   data-discount={deal.discountPct}
   data-observed={deal.observedAt}
   data-verified={deal.verified ? '' : undefined}
+  data-always-on-sale={deal.alwaysOnSale ? '' : undefined}
+  data-store={deal.storeName}
   data-lowest={deal.lowest90d ? '' : undefined}
   data-search={searchText}
 >
@@ -56,6 +58,14 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
         <span class="badge">Baisse vérifiée</span>
       ) : (
         <span class="badge badge--neutral">Annoncée par la boutique</span>
+      )}
+      {deal.alwaysOnSale && !deal.verified && (
+        <span
+          class="badge badge--neutral"
+          title="Une grande partie de cette boutique est affichée en promo en permanence"
+        >
+          Souvent en promo
+        </span>
       )}
     </p>
     <p class="prices">

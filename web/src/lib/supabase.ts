@@ -16,6 +16,7 @@ interface DealRow {
   real_disc_pct: number | null;
   claimed_disc_pct: number | null;
   saved_mad: number | null;
+  store_promo_share: number | string | null;
   score: number | null;
   lowest_90d: boolean | null;
   sizes: string[] | null;
@@ -31,6 +32,8 @@ interface PriceRow {
 }
 
 const MIN_OBSERVATIONS = 5;
+/** Above this share of discounted items, a shop's crossed-out prices say little. */
+export const ALWAYS_ON_SALE_SHARE = 0.4;
 const HISTORY_DAYS = 30;
 const ID_CHUNK = 150;
 
@@ -95,6 +98,7 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
     score: row.score ?? computeScore(discountPct, lowest90d),
     lowest90d,
     verified: trusted,
+    alwaysOnSale: Number(row.store_promo_share ?? 0) > ALWAYS_ON_SALE_SHARE,
     // Only our own readings: never draw a line we did not measure.
     history,
     sizes: row.sizes ?? [],
@@ -105,7 +109,7 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
 }
 
 export async function fetchLiveDeals(config: SupabaseConfig): Promise<Deal[]> {
-  const rows = await get<DealRow[]>(config, 'deals?select=*&order=score.desc&limit=1000');
+  const rows = await get<DealRow[]>(config, 'promos?select=*&order=score.desc&limit=2000');
   if (rows.length === 0) return [];
 
   const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();

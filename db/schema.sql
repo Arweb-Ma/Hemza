@@ -120,6 +120,26 @@ where not coalesce(fake_promo, false)
         -- and the store does not have over 40 % of its catalog "on sale"
      or (not verified and coalesce(claimed_disc_pct,0) >= 30 and store_promo_share <= 0.40) );
 
+-- Every promo worth showing, from every shop. The site lets visitors choose how strict to be
+-- (minimum discount, verified only, hide shops that are always "on sale"); the stricter `deals`
+-- view above stays the editorial selection used for Telegram.
+create or replace view promos with (security_invoker = true) as
+select id, store_id, external_id, handle, title, brand, gender, category, image_url, product_url,
+       sizes, in_stock, first_seen_at, last_seen_at, store_name, affiliate_tpl,
+       price, compare_at, observed_at, median_30d, n_obs, min_90d,
+       real_disc_pct, claimed_disc_pct, lowest_90d, fake_promo,
+  round(coalesce(case when n_obs >= 5 then median_30d end, compare_at, median_30d) - price)::int as saved_mad,
+  least(100, greatest(0,
+      coalesce(real_disc_pct, 0) * 1.6
+    + case when n_obs is null or n_obs < 5 then coalesce(claimed_disc_pct,0) * 0.6 else 0 end
+    + case when lowest_90d then 12 else 0 end
+  ))::int as score,
+  verified, store_promo_share
+from deal_candidates
+where not coalesce(fake_promo, false)
+  and ( coalesce(real_disc_pct, 0) >= 10
+     or (not verified and coalesce(claimed_disc_pct, 0) >= 10) );
+
 -- Public read access for the website (anon key), writes only via service role
 alter table stores enable row level security;
 alter table products enable row level security;
@@ -131,3 +151,4 @@ drop policy if exists "public read prices" on price_history;
 create policy "public read stores"   on stores   for select using (true);
 create policy "public read products" on products for select using (true);
 create policy "public read prices"   on price_history for select using (true);
+grant select on promos to anon, authenticated;

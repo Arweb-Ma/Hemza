@@ -26,6 +26,8 @@ export interface Deal {
   lowest90d: boolean;
   /** True once our own price history is long enough to confirm the drop ourselves. */
   verified: boolean;
+  /** The shop has a large share of its catalog permanently "on sale" (see ALWAYS_ON_SALE_SHARE). */
+  alwaysOnSale: boolean;
   /** Our own price readings over 30 days, oldest first. Fewer than 2 while a product is new. */
   history: number[];
   sizes: string[];

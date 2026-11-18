@@ -8,7 +8,7 @@ const crumbs = [{ label: 'Accueil', href: '/' }, { label: 'Comment ça marche' }
 
 <BaseLayout
   title="Comment on repère une vraie promo"
-  description="Hemza.ma compare le prix du jour au prix médian des 30 derniers jours, et écarte les promos dont le prix n'a jamais bougé."
+  description="Hemza.ma compare le prix du jour au prix médian des 30 derniers jours, retire les promos dont le prix n'a jamais bougé, et indique pour chaque promo si la baisse est vérifiée."
 >
   <div class="container page">
     <Breadcrumb items={crumbs} />
@@ -22,7 +22,14 @@ const crumbs = [{ label: 'Accueil', href: '/' }, { label: 'Comment ça marche' }
       <h2>Quand l'historique est encore court</h2>
       <p>
         Pour un article suivi depuis moins de cinq relevés, on s'appuie sur le prix barré de la
-        boutique, avec un score plus prudent, jusqu'à ce que notre propre historique suffise.
+        boutique, avec un score plus prudent, jusqu'à ce que notre propre historique suffise. Ces
+        promos portent la mention « Annoncée par la boutique ».
+      </p>
+      <h2>Les promos permanentes</h2>
+      <p>
+        Certaines boutiques affichent un prix barré sur une grande partie de leur catalogue, toute
+        l'année. Leurs promos sont marquées « Souvent en promo », et le filtre « Masquer les promos
+        permanentes » les retire, sauf si nous avons mesuré une vraie baisse.
       </p>
       <h2>Liens affiliés</h2>
       <p>

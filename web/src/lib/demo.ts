@@ -127,6 +127,7 @@ export function buildDemoFeed(now: Date = new Date(), seed = 42): DemoFeed {
           score: computeScore(discountPct, lowest90d),
           lowest90d,
           verified: true,
+          alwaysOnSale: storeName === 'Casa Avenue',
           history: [...history, price],
           sizes: sizesFor(gender, category),
           imageUrl: null,

@@ -22,7 +22,14 @@ const EAGER_IMAGES = 4;
   <h2 id="listing-title" class="visually-hidden">
     {heading}
   </h2>
-  {deals.length > 0 && <FilterBar maxPrice={maxPrice} />}
+  {deals.length > 0 && (
+    <FilterBar
+      maxPrice={maxPrice}
+      stores={[...new Set(deals.map((deal) => deal.storeName))].sort((a, b) =>
+        a.localeCompare(b, 'fr'),
+      )}
+    />
+  )}
   <p class="meta">
     <span data-deal-count aria-live="polite">
       {pluralize(deals.length, 'promo')}
