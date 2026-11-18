@@ -95,7 +95,8 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
     score: row.score ?? computeScore(discountPct, lowest90d),
     lowest90d,
     verified: trusted,
-    history: history.length > 1 ? history : [refPrice, price],
+    // Only our own readings: never draw a line we did not measure.
+    history,
     sizes: row.sizes ?? [],
     imageUrl: safeUrl(row.image_url),
     productUrl,

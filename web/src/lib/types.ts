@@ -26,7 +26,7 @@ export interface Deal {
   lowest90d: boolean;
   /** True once our own price history is long enough to confirm the drop ourselves. */
   verified: boolean;
-  /** Daily prices, oldest first, ending with the current price. */
+  /** Our own price readings over 30 days, oldest first. Fewer than 2 while a product is new. */
   history: number[];
   sizes: string[];
   imageUrl: string | null;

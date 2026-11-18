@@ -41,8 +41,9 @@ const storeOverstates =
   deal.claimedPrice !== null &&
   deal.claimedDiscountPct !== null &&
   deal.claimedDiscountPct > deal.discountPct + 3;
-const lowest = Math.min(...deal.history);
-const highest = Math.max(...deal.history);
+const hasHistory = deal.history.length >= 2;
+const lowest = hasHistory ? Math.min(...deal.history) : deal.price;
+const highest = hasHistory ? Math.max(...deal.history) : deal.price;
 
 const productJsonLd = {
   '@context': 'https://schema.org',
@@ -126,19 +127,26 @@ const productJsonLd = {
           avoir changé depuis.
         </p>
       </div>
-      <figure class="chart">
-        <figcaption>Prix sur 30 jours</figcaption>
-        <Sparkline
-          values={deal.history}
-          width={600}
-          height={90}
-          label={`Prix sur 30 jours : de ${formatMad(highest)} au plus haut à ${formatMad(lowest)} au plus bas`}
-        />
-        <p class="range">
-          <span>Plus haut : {formatMad(highest)}</span>
-          <span>Plus bas : {formatMad(lowest)}</span>
+      {hasHistory ? (
+        <figure class="chart">
+          <figcaption>Prix sur 30 jours</figcaption>
+          <Sparkline
+            values={deal.history}
+            width={600}
+            height={90}
+            label={`Prix sur 30 jours : de ${formatMad(highest)} au plus haut à ${formatMad(lowest)} au plus bas`}
+          />
+          <p class="range">
+            <span>Plus haut : {formatMad(highest)}</span>
+            <span>Plus bas : {formatMad(lowest)}</span>
+          </p>
+        </figure>
+      ) : (
+        <p class="chart history-pending">
+          Historique en construction : nous venons de commencer à suivre cet article. La courbe des
+          prix apparaîtra après quelques relevés.
         </p>
-      </figure>
+      )}
     </article>
 
     {related.length > 0 && (
@@ -235,6 +243,13 @@ const productJsonLd = {
   .chart {
     grid-column: 1 / -1;
     --sparkline-height: 5.5rem;
+  }
+  .history-pending {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    background: var(--color-bg);
+    color: var(--color-muted);
   }
   .chart figcaption {
     margin-bottom: var(--space-2);

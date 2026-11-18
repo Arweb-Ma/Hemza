@@ -81,7 +81,8 @@ select p.*, s.name as store_name, s.affiliate_tpl,
        h.median_30d, h.n_obs, l.min_90d,
        case when h.median_30d > 0 then round(100 * (1 - c.price / h.median_30d))::int end as real_disc_pct,
        case when c.compare_at > c.price then round(100 * (1 - c.price / c.compare_at))::int end as claimed_disc_pct,
-       (c.price <= l.min_90d) as lowest_90d,
+       -- only meaningful once we have our own history: with one reading, every price is "the lowest"
+       (coalesce(h.n_obs, 0) >= 5 and c.price <= l.min_90d) as lowest_90d,
        (c.compare_at > 0 and c.price <= c.compare_at * 0.7
          and h.n_obs >= 5 and c.price >= h.median_30d * 0.98) as fake_promo,
        -- verified = we have enough of our own history to judge the drop ourselves

@@ -138,7 +138,7 @@ describe('database rows', () => {
     )!;
     expect(parsed.refPrice).toBe(1500);
     expect(parsed.verified).toBe(false);
-    expect(parsed.history).toEqual([1500, 700]);
+    expect(parsed.history).toEqual([]);
   });
   it('rejects unsafe links and non-drops', () => {
     expect(toDeal({ ...row, product_url: 'javascript:alert(1)' }, [])).toBeNull();
