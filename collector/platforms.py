@@ -10,8 +10,11 @@ Shopify      /products.json                      public catalog feed
 WooCommerce  /wp-json/wc/store/v1/products       the official public Store API
 PrestaShop   listing pages asked for as JSON     the same data the shop's own "load more" uses
              (EXPERIMENTAL: depends on the shop's version and theme)
+Magento      /graphql                            the public GraphQL catalog (Marwa)
+Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma category pages
 """
 import html
+from urllib.parse import quote
 import requests
 
 from classify import classify
@@ -48,11 +51,13 @@ def get_json(url, headers=None):
 
 
 def item(store, *, external_id, title, url, price, compare_at, in_stock, image=None, brand=None,
-         sizes=(), handle=None, text=()):
-    """Builds the common product record. `text` is extra wording used only for classification."""
+         sizes=(), handle=None, text=(), gender=None):
+    """Builds the common product record. `text` is extra wording used only for classification.
+    `gender` forces the section when the shop states it (e.g. Zara's KID section holds dresses too)."""
     title = html.unescape(title or "").strip()
-    gender, category = classify(title, " ".join(t for t in text if t), [],
-                                store.get("gender_hint"), store.get("category_hint"))
+    guessed, category = classify(title, " ".join(t for t in text if t), [],
+                                 store.get("gender_hint"), store.get("category_hint"))
+    gender = gender or guessed
     return {
         "external_id": str(external_id), "handle": handle, "title": title, "brand": brand or None,
         "gender": gender, "category": category, "image_url": image or None, "product_url": url,
@@ -98,10 +103,16 @@ def shopify(store, cursor, sample=False):
 WOO_LIMIT = 100
 SIZE_WORDS = ("taille", "size", "pointure", "مقاس")
 
+# Store API paths, newest first. Older WooCommerce versions only answer the unversioned one.
+WOO_PATHS = ("wp-json/wc/store/v1/products", "wp-json/wc/store/products")
+
 def woocommerce(store, cursor, sample=False):
     page = cursor or 1
     limit = 3 if sample else WOO_LIMIT
-    result = get_json(f"https://{store['domain']}/wp-json/wc/store/v1/products?per_page={limit}&page={page}")
+    for path in WOO_PATHS:
+        result = get_json(f"https://{store['domain']}/{path}?per_page={limit}&page={page}")
+        if not (result[0] == "error" and result[1].startswith("HTTP 404")):
+            break
     if result[0] != "ok":
         return result
     data = result[1]
@@ -169,7 +180,131 @@ def prestashop(store, cursor, sample=False):
     return ("ok", items, (index + 1, 1) if index + 1 < len(paths) else None)
 
 
-ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop}
+# ------------------------------------------------------------------ Magento (GraphQL)
+MAGENTO_LIMIT = 100
+MAGENTO_QUERY = (
+    '{products(search:"",pageSize:%d,currentPage:%d){page_info{total_pages} items{'
+    'id sku name url_key url_suffix stock_status small_image{url} categories{name} '
+    'price_range{minimum_price{regular_price{value} final_price{value}}}}}}'
+)
+
+def magento(store, cursor, sample=False):
+    page = cursor or 1
+    limit = 3 if sample else MAGENTO_LIMIT
+    result = get_json(f"https://{store['domain']}/graphql?query={quote(MAGENTO_QUERY % (limit, page))}")
+    if result[0] != "ok":
+        return result
+    data = ((result[1] or {}).get("data") or {}).get("products") if isinstance(result[1], dict) else None
+    if not isinstance(data, dict):
+        return ("error", "no Magento GraphQL catalog here")
+    items = []
+    for p in data.get("items") or []:
+        prices = ((p.get("price_range") or {}).get("minimum_price") or {})
+        price = (prices.get("final_price") or {}).get("value")
+        regular = (prices.get("regular_price") or {}).get("value")
+        if price is None or not p.get("url_key"):
+            continue
+        items.append(item(
+            store, external_id=p.get("id") or p.get("sku"), handle=p.get("url_key"), title=p.get("name"),
+            url=f"https://{store['domain']}/{p['url_key']}{p.get('url_suffix') or '.html'}",
+            price=price, compare_at=regular, in_stock=p.get("stock_status") != "OUT_OF_STOCK",
+            image=(p.get("small_image") or {}).get("url"), brand=store.get("name"),
+            text=[c.get("name") for c in p.get("categories") or []],
+        ))
+    if sample:
+        return ("ok", items, None)
+    pages = int((data.get("page_info") or {}).get("total_pages") or 1)
+    return ("ok", items, page + 1 if page < min(pages, MAX_PAGES) else None)
+
+
+# ------------------------------------------------------------------ Zara
+ZARA_BASE = "https://www.zara.com/ma/fr"
+ZARA_SECTIONS = {"WOMAN": "femme", "MAN": "homme", "KID": "enfant"}
+ZARA_SKIP_FAMILIES = {"PERFUME", "PERFUMES", "FRAGRANCE", "COSMETICS", "MAKE UP", "MAKEUP", "BEAUTY"}
+ZARA_LISTINGS = {"TOUT VOIR", "TOUT AFFICHER"}
+
+def zara_targets(categories):
+    """Category ids worth reading: every "TOUT VOIR" listing of the women, men and kids sections,
+    price-drop listings first. A section without such listings falls back to its leaf categories."""
+    sale, listings = [], []
+    for root in categories:
+        section = root.get("sectionName")
+        if section not in ZARA_SECTIONS:
+            continue
+        found, leaves = [], []
+        def walk(nodes, sale_branch):
+            for c in nodes:
+                name = (c.get("name") or "").strip().upper()
+                on_sale = sale_branch or "BAISSE DE PRIX" in name or "SOLDES" in name
+                subs = c.get("subcategories") or []
+                if subs:
+                    walk(subs, on_sale)
+                elif c.get("layout") == "products-category-view":
+                    leaves.append(c["id"])
+                    if on_sale:
+                        sale.append(c["id"])
+                    elif name in ZARA_LISTINGS:
+                        found.append(c["id"])
+        walk(root.get("subcategories") or [], False)
+        listings += found or leaves
+    seen, ordered = set(), []
+    for cid in sale + listings:
+        if cid not in seen:
+            seen.add(cid)
+            ordered.append(cid)
+    return ordered
+
+def zara_image(product):
+    for media in (product.get("xmedia") or []) + [
+            m for c in ((product.get("detail") or {}).get("colors") or [])[:1] for m in c.get("xmedia") or []]:
+        if media.get("url"):
+            return media["url"].replace("{width}", "563")
+        if media.get("path") and media.get("name"):
+            return f"https://static.zara.net{media['path']}/{media['name']}.jpg?ts={media.get('timestamp', '')}&w=563"
+    return None
+
+def zara(store, cursor, sample=False):
+    if cursor is None:
+        result = get_json(f"{ZARA_BASE}/categories?ajax=true")
+        if result[0] != "ok":
+            return result
+        targets = zara_targets((result[1] or {}).get("categories") or []) if isinstance(result[1], dict) else []
+        if not targets:
+            return ("error", "no Zara category tree here")
+        cursor = {"targets": targets[:1] if sample else targets, "index": 0, "seen": set()}
+    targets, index, seen = cursor["targets"], cursor["index"], cursor["seen"]
+    result = get_json(f"{ZARA_BASE}/category/{targets[index]}/products?ajax=true")
+    if result[0] != "ok":
+        if result[0] == "error" and index + 1 < len(targets) and not sample:
+            return ("ok", [], {**cursor, "index": index + 1})       # one broken listing is not fatal
+        return result
+    items = []
+    for group in (result[1] or {}).get("productGroups") or []:
+        for element in group.get("elements") or []:
+            for p in element.get("commercialComponents") or []:
+                seo, price = p.get("seo") or {}, p.get("price")
+                if price is None or not seo.get("keyword") or p.get("id") in seen:
+                    continue
+                if (p.get("familyName") or "").upper() in ZARA_SKIP_FAMILIES:
+                    continue
+                seen.add(p.get("id"))
+                old = p.get("oldPrice")
+                items.append(item(
+                    store, external_id=p["id"], handle=seo.get("keyword"), title=p.get("name"),
+                    url=f"{ZARA_BASE}/{seo['keyword']}-p{seo.get('seoProductId')}.html?v1={seo.get('discernProductId', p['id'])}",
+                    price=price / 100, compare_at=old / 100 if old else None,
+                    in_stock=p.get("availability") not in ("out_of_stock", "coming_soon"),
+                    image=zara_image(p), brand="Zara",
+                    gender=ZARA_SECTIONS.get(p.get("sectionName")),
+                    text=[p.get("familyName"), p.get("subfamilyName")],
+                ))
+    if sample:
+        return ("ok", items[:3], None)
+    return ("ok", items, {**cursor, "index": index + 1} if index + 1 < len(targets) else None)
+
+
+ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
+            "magento": magento, "zara": zara}
 
 
 def fetch(store, cursor, sample=False):
@@ -180,4 +315,6 @@ def fetch(store, cursor, sample=False):
 
 
 def label(cursor):
+    if isinstance(cursor, dict):
+        return f"listing {cursor['index'] + 1}/{len(cursor['targets'])}"
     return f"listing {cursor[0] + 1}, page {cursor[1]}" if isinstance(cursor, tuple) else f"page {cursor}"

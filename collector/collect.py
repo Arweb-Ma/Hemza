@@ -1,5 +1,5 @@
 """
-Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop), classifies items
+Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop, Magento, Zara), classifies items
 (femme / homme / enfant + category) and writes prices to Supabase.
 
 Usage (PowerShell: $env:NAME = "value" instead of export):
@@ -69,20 +69,21 @@ class DB:
         r = requests.post(f"{self.url}/{table}", headers=dict(self.h, Prefer="return=minimal"), json=rows, timeout=60)
         r.raise_for_status()
 
-    def latest_prices(self, product_ids):
-        if not product_ids:
-            return {}
-        ids = ",".join(map(str, product_ids))
-        r = requests.get(f"{self.url}/price_history?select=product_id,price,observed_at"
-                         f"&product_id=in.({ids})&order=observed_at.desc", headers=self.h, timeout=60)
-        r.raise_for_status()
+    def latest_prices(self, product_ids, chunk=300):
+        """Latest price row per product. Asked in chunks: a big brand page holds thousands of ids."""
         last = {}
-        for row in r.json():
-            last.setdefault(row["product_id"], row)
+        for i in range(0, len(product_ids), chunk):
+            ids = ",".join(map(str, product_ids[i:i + chunk]))
+            r = requests.get(f"{self.url}/price_history?select=product_id,price,observed_at"
+                             f"&product_id=in.({ids})&order=observed_at.desc", headers=self.h, timeout=60)
+            r.raise_for_status()
+            for row in r.json():
+                last.setdefault(row["product_id"], row)
         return last
 
 def save(db, store, items):
     store_row = db.upsert("stores", [{"name": store["name"], "domain": store["domain"], "platform": store.get("platform", "shopify"),
+                                       "tier": store.get("tier", "boutique"),
                                        "last_crawl_at": datetime.now(timezone.utc).isoformat()}], "domain")[0]
     now = datetime.now(timezone.utc).isoformat()
     prod_rows = [{k: v for k, v in it.items() if not k.startswith("_")} | {"store_id": store_row["id"], "last_seen_at": now}

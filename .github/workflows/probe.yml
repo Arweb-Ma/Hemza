@@ -5,10 +5,12 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - run: pip install requests
-      - run: pip install -r collector/requirements.txt && python probe/probe7.py
+      - run: pip install -r collector/requirements.txt
+      - run: python probe/check_images.py
+      - run: python collector/collect.py --dry-run --max-minutes 30 --only zara.com www.marwa.com kiabi.ma lacoste.ma aldoshoes.ma skechers.ma
