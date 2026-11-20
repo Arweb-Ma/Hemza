@@ -11,4 +11,4 @@ jobs:
         with:
           python-version: '3.13'
       - run: pip install requests
-      - run: python probe/probe.py
+      - run: python probe/probe2.py
