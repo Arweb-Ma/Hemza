@@ -11,4 +11,4 @@ jobs:
         with:
           python-version: '3.13'
       - run: pip install requests
-      - run: pip install -r collector/requirements.txt && python probe/probe5.py
+      - run: pip install -r collector/requirements.txt && python probe/probe6.py
