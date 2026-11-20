@@ -1,5 +1,5 @@
 import { SUPABASE } from '@/config/site';
-import { byScore } from './deals';
+import { byScore, dropDuplicates } from './deals';
 import { buildDemoFeed } from './demo';
 import { fetchLiveDeals } from './supabase';
 import type { DealFeed } from './types';
@@ -21,7 +21,7 @@ async function load(): Promise<DealFeed> {
       const deals = await fetchLiveDeals({ url, key });
       if (deals.length > 0) {
         return {
-          deals: deals.sort(byScore),
+          deals: dropDuplicates(deals),
           source: 'live',
           fakePromosFiltered: null,
           generatedAt,

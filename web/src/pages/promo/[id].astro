@@ -7,7 +7,7 @@ import Sparkline from '@/components/Sparkline.astro';
 import { CATEGORY_LABEL, SECTION_LABEL, type Section } from '@/config/site';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { getDealFeed } from '@/lib/data';
-import { scoreLevel } from '@/lib/deals';
+import { collapseModels, modelKey, scoreLevel } from '@/lib/deals';
 import { formatMad, timeAgo } from '@/lib/format';
 import { breadcrumbJsonLd } from '@/lib/seo';
 
@@ -18,15 +18,19 @@ export const getStaticPaths = (async () => {
     props: {
       deal,
       isDemo: source === 'demo',
-      related: deals
-        .filter((other) => other.id !== deal.id && other.category === deal.category)
-        .slice(0, 4),
+      // Other products the shop sells under the same name.
+      models: deals.filter((other) => other.id !== deal.id && modelKey(other) === modelKey(deal)),
+      related: collapseModels(
+        deals.filter(
+          (other) => other.category === deal.category && modelKey(other) !== modelKey(deal),
+        ),
+      ).slice(0, 4),
     },
   }));
 }) satisfies GetStaticPaths;
 
 type Props = InferGetStaticPropsType<typeof getStaticPaths>;
-const { deal, related, isDemo } = Astro.props;
+const { deal, models, related, isDemo } = Astro.props;
 
 const section: Section = deal.gender === 'unisexe' ? 'femme' : deal.gender;
 const categoryLabel = CATEGORY_LABEL[deal.category];
@@ -149,14 +153,27 @@ const productJsonLd = {
       )}
     </article>
 
+    {models.length > 0 && (
+      <section aria-labelledby="models-title">
+        <h2 id="models-title" class="display">
+          Autres modèles du même nom chez {deal.storeName}
+        </h2>
+        <div class="related">
+          {models.map((other) => (
+            <DealCard deal={other} />
+          ))}
+        </div>
+      </section>
+    )}
+
     {related.length > 0 && (
       <section aria-labelledby="related-title">
         <h2 id="related-title" class="display">
           Autres promos : {categoryLabel.toLowerCase()}
         </h2>
         <div class="related">
-          {related.map((other) => (
-            <DealCard deal={other} />
+          {related.map(({ deal: other, models: count, fromPrice }) => (
+            <DealCard deal={other} models={count} fromPrice={fromPrice} />
           ))}
         </div>
       </section>

@@ -3,11 +3,12 @@ import DealListing from '@/components/DealListing.astro';
 import HowItWorks from '@/components/HowItWorks.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { getDealFeed } from '@/lib/data';
+import { collapseModels } from '@/lib/deals';
 
 const { deals, fakePromosFiltered, generatedAt } = await getDealFeed();
 const storeCount = new Set(deals.map((deal) => deal.storeName)).size;
 const stats = [
-  { value: deals.length, label: 'promos actives' },
+  { value: collapseModels(deals).length, label: 'promos actives' },
   { value: storeCount, label: 'boutiques suivies' },
   ...(fakePromosFiltered === null
     ? []

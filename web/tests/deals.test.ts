@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   byScore,
   categoriesIn,
+  collapseModels,
   computeScore,
+  dropDuplicates,
   filterDeals,
   inSection,
   scoreLevel,
@@ -176,5 +178,50 @@ describe('demo feed', () => {
     expect(a.deals.length).toBeGreaterThan(20);
     expect(a.fakePromosFiltered).toBeGreaterThan(0);
     expect(a.deals.every((d) => d.price < d.refPrice && d.discountPct >= 15)).toBe(true);
+  });
+});
+
+describe('duplicates', () => {
+  const img = (name: string) => `https://cdn.shopify.com/files/${name}.webp?v=1`;
+  it('drops a re-posted product (same photo) and keeps the cheapest copy', () => {
+    const kept = dropDuplicates([
+      deal({ id: 1, title: 'Casquette Gris.', price: 199, imageUrl: img('a') }),
+      deal({
+        id: 2,
+        title: 'Casquette Gris',
+        price: 110,
+        imageUrl: img('a').replace('v=1', 'v=2'),
+      }),
+      deal({ id: 3, title: 'Casquette Noir', price: 110, imageUrl: img('b') }),
+    ]);
+    expect(kept.map((d) => d.id).sort()).toEqual([2, 3]);
+  });
+  it('drops same name at the same price even without a photo', () => {
+    const kept = dropDuplicates([
+      deal({ id: 1, title: 'Robe Été', price: 200 }),
+      deal({ id: 2, title: 'robe ete.', price: 200 }),
+    ]);
+    expect(kept).toHaveLength(1);
+  });
+  it('drops test listings', () => {
+    expect(dropDuplicates([deal({ title: 'LOS ANGELES | TEST' })])).toHaveLength(0);
+  });
+  it('keeps same-named products from different shops', () => {
+    const kept = dropDuplicates([
+      deal({ id: 1, storeName: 'A', title: 'Robe' }),
+      deal({ id: 2, storeName: 'B', title: 'Robe' }),
+    ]);
+    expect(kept).toHaveLength(2);
+  });
+  it('shows models sold under one name as a single card', () => {
+    const listed = collapseModels([
+      deal({ id: 1, title: 'BASKETS - NOIR', price: 209, imageUrl: img('a') }),
+      deal({ id: 2, title: 'Baskets - noir', price: 179, imageUrl: img('b') }),
+      deal({ id: 3, title: 'BASKETS - BLANC', price: 179, imageUrl: img('c') }),
+    ]);
+    expect(listed.map((l) => [l.deal.id, l.models, l.fromPrice])).toEqual([
+      [1, 2, 179],
+      [3, 1, 179],
+    ]);
   });
 });

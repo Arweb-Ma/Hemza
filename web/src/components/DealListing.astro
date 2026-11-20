@@ -1,6 +1,7 @@
 ---
 import DealCard from './DealCard.astro';
 import FilterBar from './FilterBar.astro';
+import { collapseModels } from '@/lib/deals';
 import { pluralize, timeAgo } from '@/lib/format';
 import type { Deal } from '@/lib/types';
 
@@ -11,6 +12,8 @@ interface Props {
   heading?: string;
 }
 const { deals, updatedAt, heading = 'Promos du moment' } = Astro.props;
+// Models a shop sells under the same name share one card.
+const listed = collapseModels(deals);
 const maxPrice = Math.max(
   500,
   Math.ceil(Math.max(0, ...deals.map((deal) => deal.price)) / 100) * 100,
@@ -32,15 +35,15 @@ const EAGER_IMAGES = 4;
   )}
   <p class="meta">
     <span data-deal-count aria-live="polite">
-      {pluralize(deals.length, 'promo')}
+      {pluralize(listed.length, 'promo')}
     </span>
     <span>
       Mis à jour <time datetime={updatedAt}>{timeAgo(updatedAt)}</time>
     </span>
   </p>
   <div class="grid" data-deal-grid>
-    {deals.map((deal, index) => (
-      <DealCard deal={deal} priority={index < EAGER_IMAGES} />
+    {listed.map(({ deal, models, fromPrice }, index) => (
+      <DealCard deal={deal} models={models} fromPrice={fromPrice} priority={index < EAGER_IMAGES} />
     ))}
   </div>
   <p class="empty" data-deal-empty hidden={deals.length > 0}>

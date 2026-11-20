@@ -10,8 +10,18 @@ interface Props {
   /** Load the image eagerly: set for the first row, which is visible without scrolling. */
   priority?: boolean;
   headingLevel?: 'h2' | 'h3';
+  /** Number of models the shop sells under this name (see collapseModels). */
+  models?: number;
+  /** Lowest price among those models. */
+  fromPrice?: number;
 }
-const { deal, priority = false, headingLevel: Heading = 'h3' } = Astro.props;
+const {
+  deal,
+  priority = false,
+  headingLevel: Heading = 'h3',
+  models = 1,
+  fromPrice = deal.price,
+} = Astro.props;
 const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
 ---
 
@@ -82,6 +92,11 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
       </strong>
     </p>
     <p class="saving">Vous économisez {formatMad(deal.savedMad)}</p>
+    {models > 1 && (
+      <p class="models">
+        {models} modèles{fromPrice < deal.price && <> dès {formatMad(fromPrice)}</>}
+      </p>
+    )}
   </div>
   <p class="discount">
     <span class="visually-hidden">Remise : </span>-{deal.discountPct}%
@@ -184,6 +199,10 @@ const searchText = `${deal.title} ${deal.storeName}`.toLowerCase();
     font-size: 0.78125rem;
     font-weight: 600;
     color: var(--color-accent-strong);
+  }
+  .models {
+    font-size: 0.78125rem;
+    color: var(--color-muted);
   }
 
   .discount,
