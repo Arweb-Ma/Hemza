@@ -307,6 +307,8 @@ def zara(store, cursor, sample=False):
 
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
             "magento": magento, "zara": zara}
+# Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
+GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
 
 def fetch(store, cursor, sample=False):

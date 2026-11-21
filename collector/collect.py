@@ -115,7 +115,7 @@ def detect(domains):
     for domain in domains:
         print(f"→ {domain}")
         found = None
-        for name in platforms.ADAPTERS:
+        for name in platforms.GENERIC:
             result = platforms.fetch({"domain": domain, "name": domain, "platform": name}, None, sample=True)
             if result[0] == "ok":
                 print(f"  {name:12} yes, {len(result[1])} products in the sample")
