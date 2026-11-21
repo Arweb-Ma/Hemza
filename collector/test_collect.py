@@ -504,6 +504,23 @@ class BrandReadersTest(unittest.TestCase):
         self.assertIn("https://www.defacto.com/fr-ma/woman-discount-product-ma?page=3", CardsBrowser.urls)
         self.assertNotIn("https://www.defacto.com/fr-ma/woman-discount-product-ma?page=4", CardsBrowser.urls)
 
+    def test_browser_cards_without_a_sale_section_is_not_an_error(self):
+        class NoSaleBrowser:
+            def render(self, store, url, script, wait_for=None, arg=None):
+                return ("ok", ["/ma/page/faqsv2.html"] if script is platforms.SALE_LINK_JS else {"products": []})
+            def snapshot(self, store, name):
+                return ""
+        platforms._browser = NoSaleBrowser()
+        try:
+            store = {"name": "Lefties", "domain": "www.lefties.com", "platform": "browser_cards", "prefix": "/ma/",
+                     "discover": True}
+            with redirect_stdout(io.StringIO()) as out:
+                result = platforms.fetch(store, None)
+        finally:
+            platforms._browser = None
+        self.assertEqual(result, ("ok", [], None))
+        self.assertIn("no sale section", out.getvalue())
+
     def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
         black = zara_product(1, price=39900, old=None)
         red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}

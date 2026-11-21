@@ -732,7 +732,16 @@ def magento_page_next(store, cursor, items, found, sample):
 # page named soldes / promo / sale / discount. On each page (scrolled, so lazy grids load) every
 # link of the shop with a MAD/DH price next to it is a product card (the Decathlon card reader with
 # a generic link pattern). `page_param`: also read ?<param>=2, 3… until no new product appears.
-SALE_LINK_JS = r"""([prefix, words]) => {
+SALE_LINK_JS = r"""async ([prefix, words]) => {
+  // Menus often load their links only when opened (☰): open it first, without following any link.
+  const opener = [...document.querySelectorAll(
+      'button[aria-label*="menu" i], [role="button"][aria-label*="menu" i], button[class*="menu" i], ' +
+      'button[class*="burger" i], [class*="hamburger" i]')]
+    .find(e => !e.closest('a[href]') && e.offsetParent !== null);
+  if (opener) {
+    try { opener.click(); } catch (e) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
   const re = new RegExp(words, 'i'), out = [];
   for (const a of document.querySelectorAll('a[href]')) {
     let url;
@@ -762,7 +771,11 @@ def browser_cards(store, cursor, sample=False):
             targets += [p for p in (found or []) if not SALE_EXCLUDE.search(p)][:int(store.get("max_targets") or 8)]
         targets = list(dict.fromkeys(t if t.startswith("/") else prefix + t for t in targets))
         if not targets:
-            return ("error", f"no sale listing found on the home page{reader.snapshot(store, 'no-sale-links')}")
+            # Not an error: many shops only open a sale section during sales (Lefties, Nov 2026).
+            print("  no sale section on the site right now (home page and menu checked)", flush=True)
+            if os.environ.get("HEMZA_DEBUG") in ("1", "true", "yes"):
+                print(f"  {reader.snapshot(store, 'no-sale-links').lstrip(' —')}", flush=True)
+            return ("ok", [], None)
         cursor = {"targets": targets, "index": 0, "page": 1, "seen": set(), "found_any": False}
     targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
     url = f"https://{store['domain']}{targets[index]}"
