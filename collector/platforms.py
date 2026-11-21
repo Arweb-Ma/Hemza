@@ -12,8 +12,9 @@ PrestaShop   listing pages asked for as JSON     the same data the shop's own "l
              (EXPERIMENTAL: depends on the shop's version and theme)
 Magento      /graphql                            the public GraphQL catalog (Marwa)
 Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma category pages
+LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
 """
-import html
+import html, json, re
 from urllib.parse import quote
 import requests
 
@@ -48,6 +49,20 @@ def get_json(url, headers=None):
         return ("ok", r.json(), r)
     except ValueError:
         return ("error", "answered with a web page, not data (wrong platform, or a challenge page) " + describe(r))
+
+
+def get_text(url):
+    """Like get_json, for HTML pages. Returns ("ok", text, response) or an error tuple."""
+    try:
+        r = requests.get(url, headers={"User-Agent": UA, "Accept": "text/html"}, timeout=TIMEOUT)
+    except requests.RequestException as e:
+        return ("error", str(e))
+    if r.status_code in (429, 430, 503):
+        asked = r.headers.get("Retry-After", "")
+        return ("throttled", int(asked) if asked.isdigit() else None, describe(r))
+    if r.status_code != 200:
+        return ("error", describe(r))
+    return ("ok", r.text, r)
 
 
 def item(store, *, external_id, title, url, price, compare_at, in_stock, image=None, brand=None,
@@ -305,8 +320,74 @@ def zara(store, cursor, sample=False):
     return ("ok", items, {**cursor, "index": index + 1} if index + 1 < len(targets) else None)
 
 
+# ------------------------------------------------------------------ LC Waikiki
+# Listing pages embed their products as `var catalogModel = {...}`. We read the sale listings the
+# home page links to (plus any "paths" from stores.json) and follow ?page=N (robots.txt allows `page`,
+# not `PageIndex`).
+LCW_MARKER = "var catalogModel = "
+LCW_SALE_LINK = re.compile(r'href="(/fr/(?:mvc|campagnes)/[^"?#]*(?:sale|discount|solde|promo)[^"?#]*)"', re.I)
+LCW_SECTIONS = (("enfant", r"enfant|fille|gar[cç]on|b[ée]b[ée]|adolescent|kids?|girls?|boys?|baby"),
+                ("femme", r"femme|women"), ("homme", r"homme|men"))
+
+def lcw_model(text):
+    start = text.find(LCW_MARKER)
+    if start < 0:
+        return None
+    try:
+        return json.JSONDecoder().raw_decode(text, start + len(LCW_MARKER))[0]
+    except ValueError:
+        return None
+
+def lcw_gender(p):
+    label = " ".join(str(p.get(k) or "") for k in ("ProductGroup", "Gender"))
+    return next((g for g, rx in LCW_SECTIONS if re.search(rx, label, re.I)), None)
+
+def lcwaikiki(store, cursor, sample=False):
+    base = f"https://{store['domain']}"
+    if cursor is None:
+        result = get_text(f"{base}/fr")
+        if result[0] != "ok":
+            return result
+        targets = list(dict.fromkeys((store.get("paths") or []) + LCW_SALE_LINK.findall(result[1])))
+        if not targets:
+            return ("error", "no LC Waikiki sale listings found on the home page")
+        cursor = {"targets": targets[:1] if sample else targets, "index": 0, "page": 1, "seen": set()}
+    targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
+    following = {**cursor, "index": index + 1, "page": 1} if index + 1 < len(targets) else None
+    result = get_text(f"{base}{targets[index]}" + (f"?page={page}" if page > 1 else ""))
+    if result[0] != "ok":
+        if result[0] == "error" and following and not sample:
+            return ("ok", [], following)                                # one dead listing is not fatal
+        return result
+    model = lcw_model(result[1])
+    if model is None:
+        return ("ok", [], following) if following and not sample else ("error", "no catalogModel on the page")
+    products = ((model.get("CatalogList") or {}).get("Items")) or []
+    items = []
+    for p in products:
+        key, url, regular = p.get("OptionId") or p.get("ModelId"), p.get("ModelUrl"), p.get("PriceValue")
+        if key in seen or not url or not regular:
+            continue
+        seen.add(key)
+        sale = p.get("DiscountedPriceValue") or 0
+        price, was = (sale, regular) if 0 < sale < regular else (regular, None)
+        crumbs = p.get("BreadCrump") or {}
+        items.append(item(
+            store, external_id=key, handle=url.rsplit("/", 1)[-1], title=p.get("ProductDescription"),
+            url=base + url, price=price, compare_at=was, in_stock=(p.get("AvailableStock") or 0) > 0,
+            image=p.get("DefaultOptionImageUrl"), brand=p.get("Brand") or "LC Waikiki", gender=lcw_gender(p),
+            text=[p.get("Category"), *crumbs.values()],
+        ))
+    if sample:
+        return ("ok", items[:3], None)
+    pages = int((model.get("PageInfo") or {}).get("PageCount") or 0) or (page + 1 if len(products) >= 100 else page)
+    if page < min(pages, MAX_PAGES):
+        return ("ok", items, {**cursor, "page": page + 1})
+    return ("ok", items, following)
+
+
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
-            "magento": magento, "zara": zara}
+            "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki}
 # Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
 GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
@@ -320,5 +401,6 @@ def fetch(store, cursor, sample=False):
 
 def label(cursor):
     if isinstance(cursor, dict):
-        return f"listing {cursor['index'] + 1}/{len(cursor['targets'])}"
+        page = f", page {cursor['page']}" if cursor.get("page", 1) > 1 else ""
+        return f"listing {cursor['index'] + 1}/{len(cursor['targets'])}{page}"
     return f"listing {cursor[0] + 1}, page {cursor[1]}" if isinstance(cursor, tuple) else f"page {cursor}"

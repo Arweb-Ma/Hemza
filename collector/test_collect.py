@@ -10,6 +10,7 @@ import collect, platforms
 class FakeResponse:
     def __init__(self, status, data=None, headers=None, html=False):
         self.status_code, self._data, self._html = status, data, html
+        self.text = data if isinstance(data, str) else ""
         self.headers = {"content-type": "text/html" if html else "application/json", **(headers or {})}
 
     def json(self):
@@ -41,10 +42,10 @@ def presta_product(i, price=700.0, regular=1300.0):
 class World:
     """Fake shops. Shopify lets one request through every `budget` seconds across ALL its stores."""
     def __init__(self, shopify=None, woo=None, presta=None, budget=0, retry_after="60", blocked=(),
-                 woo_legacy=None, magento=None, zara=None):
+                 woo_legacy=None, magento=None, zara=None, lcw=None):
         self.now = 0.0
         self.shopify, self.woo, self.presta = shopify or {}, woo or {}, presta or {}
-        self.woo_legacy, self.magento, self.zara = woo_legacy or {}, magento or {}, zara
+        self.woo_legacy, self.magento, self.zara, self.lcw = woo_legacy or {}, magento or {}, zara, lcw
         self.budget, self.retry_after, self.blocked = budget, retry_after, set(blocked)
         self.last_ok, self.requests = None, []
 
@@ -59,6 +60,15 @@ class World:
         found = re.search(r"[?&]page=(\d+)", path)
         page = int(found.group(1)) if found else 1
         self.requests.append((round(self.now), domain, page))
+        if domain == "www.lcwaikiki.ma" and self.lcw is not None:
+            listing = "/" + path.split("?")[0]
+            if listing == "/fr":
+                return FakeResponse(200, self.lcw["home"], html=True)
+            pages = self.lcw["listings"].get(listing)
+            if pages is None or page > len(pages):
+                return FakeResponse(404, html=True)
+            model = {"CatalogList": {"Items": pages[page - 1]}, "PageInfo": {"PageCount": len(pages)}}
+            return FakeResponse(200, f"<script>var catalogModel = {json.dumps(model)};</script>", html=True)
         if domain == "www.zara.com" and self.zara is not None:
             if path.startswith("ma/fr/categories"):
                 return FakeResponse(200, {"categories": self.zara["tree"]})
@@ -301,7 +311,43 @@ ZARA_TREE = [
 ]
 
 
+def lcw_product(i, regular=299.0, sale=0.0, group="Femmes", stock=3):
+    return {"OptionId": i, "ModelId": 1000 + i, "ModelUrl": f"/fr/robe-{i}-o-{i}", "ProductDescription": f"Robe {i}",
+            "Brand": "LCW", "PriceValue": regular, "DiscountedPriceValue": sale, "ProductGroup": group,
+            "Gender": "", "Category": "Robes", "BreadCrump": {"Level1": group}, "AvailableStock": stock,
+            "DefaultOptionImageUrl": f"https://img-lcwaikiki.mncdn.com/{i}.jpg"}
+
+
+LCW_HOME = ('<a href="/fr/mvc/shirts-tunics-women-sale-new">a</a><a href="/fr/mvc/men-sale-global">b</a>'
+            '<a href="/fr/femmes-t-1">c</a><a href="/fr/mvc/men-sale-global">dup</a>')
+
+
 class BrandReadersTest(unittest.TestCase):
+    def test_lcwaikiki_reads_sale_listings_page_by_page(self):
+        lcw = {"home": LCW_HOME, "listings": {
+            "/fr/mvc/shirts-tunics-women-sale-new": [[lcw_product(1, sale=199.0), lcw_product(2)],
+                                                      [lcw_product(3, sale=99.0, stock=0)]],
+            "/fr/mvc/men-sale-global": [[lcw_product(1, sale=199.0), lcw_product(4, sale=149.0, group="Hommes")]]}}
+        world = World(lcw=lcw)
+        store = {"name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki"}
+        cursor, items, steps = None, [], 0
+        while True:
+            status, page, cursor = read_one(world, store, cursor)
+            self.assertEqual(status, "ok")
+            items, steps = items + page, steps + 1
+            if cursor is None:
+                break
+        self.assertEqual(steps, 3)                                      # 2 pages + 1 page, women first
+        self.assertEqual([i["external_id"] for i in items], ["1", "2", "3", "4"])       # no repeat
+        first = items[0]
+        self.assertEqual((first["_price"], first["_compare_at"], first["gender"]), (199.0, 299.0, "femme"))
+        self.assertEqual(first["product_url"], "https://www.lcwaikiki.ma/fr/robe-1-o-1")
+        self.assertEqual((items[1]["_price"], items[1]["_compare_at"]), (299.0, None))
+        self.assertFalse(items[2]["in_stock"])
+        self.assertEqual(items[3]["gender"], "homme")
+        self.assertNotIn("/fr/femmes-t-1", str(world.requests))         # only sale listings are read
+
+
     def test_woocommerce_follows_the_announced_page_count(self):
         world = World(woo_legacy={"old.ma": [woo_product(i) for i in range(60)]})
         real = world.get
