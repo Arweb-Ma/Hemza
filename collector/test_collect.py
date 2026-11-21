@@ -384,6 +384,33 @@ class BrandReadersTest(unittest.TestCase):
         last = items[-1]
         self.assertEqual((last["_compare_at"], last["in_stock"]), (None, False))
 
+    def test_zara_through_the_browser(self):
+        listings = {121: [zara_product(1)], 111: [zara_product(2)], 21: []}
+        class ZaraBrowser:
+            calls = []
+            def get_json(self, store, url, headers=None):
+                self.calls.append(url)
+                if url.endswith("/categories?ajax=true"):
+                    return ("ok", {"categories": ZARA_TREE}, None)
+                cid = int(re.search(r"/category/(\d+)/", url).group(1))
+                return ("ok", {"productGroups": [{"elements": [{"commercialComponents": listings[cid]}]}]}, None)
+        fake = ZaraBrowser()
+        platforms._browser = fake
+        try:
+            store = {"name": "Zara", "domain": "www.zara.com", "platform": "zara", "via": "browser"}
+            cursor, items = None, []
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                self.assertEqual(status, "ok")
+                items += page
+                if cursor is None:
+                    break
+        finally:
+            platforms._browser = None
+        self.assertEqual([i["external_id"] for i in items], ["1", "2"])
+        self.assertTrue(all(u.startswith("https://www.zara.com/ma/fr/") for u in fake.calls))
+        self.assertEqual(len(fake.calls), 4)                                          # tree + 3 listings
+
     def test_zara_targets_price_drops_first_then_listings_and_skips_beauty(self):
         self.assertEqual(platforms.zara_targets(ZARA_TREE), [121, 111, 21])
 

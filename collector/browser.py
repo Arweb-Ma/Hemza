@@ -1,7 +1,7 @@
 """
 Reads pages with a real Chromium (hidden by default), for shops that refuse plain HTTP clients.
 
-Used by the `decathlon` reader (Decathlon.ma). The browser starts on the
+Used by the `decathlon` reader and by stores marked `"via": "browser"` (Zara). The browser starts on the
 first request and is shared by every such store for the whole run; it is closed when the run ends.
 
 What it does: opens the shop's home page once (so the shop's own scripts and cookies run as for any
@@ -84,7 +84,7 @@ def _page(store):
             close()
             return None, f"could not start the browser: {str(e).splitlines()[0][:200]}"
     page = _state["context"].new_page()
-    blocked = _goto(page, f"https://{domain}/")
+    blocked = _goto(page, store.get("home_url") or f"https://{domain}/")
     if blocked:
         page.close()
         return None, blocked

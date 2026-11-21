@@ -267,6 +267,14 @@ def magento(store, cursor, sample=False):
 
 
 # ------------------------------------------------------------------ Zara
+# Plain HTTP from a server is refused by zara.com, so the store can be marked `"via": "browser"`:
+# the same JSON is then asked for from inside a Chromium tab opened on zara.com/ma (browser.py).
+def shop_json(store, url, headers=None):
+    if store.get("via") == "browser":
+        return browser_reader().get_json(store, url, headers)
+    return get_json(url, headers)
+
+
 ZARA_BASE = "https://www.zara.com/ma/fr"
 ZARA_SECTIONS = {"WOMAN": "femme", "MAN": "homme", "KID": "enfant"}
 ZARA_SKIP_FAMILIES = {"PERFUME", "PERFUMES", "FRAGRANCE", "COSMETICS", "MAKE UP", "MAKEUP", "BEAUTY"}
@@ -314,7 +322,7 @@ def zara_image(product):
 
 def zara(store, cursor, sample=False):
     if cursor is None:
-        result = get_json(f"{ZARA_BASE}/categories?ajax=true")
+        result = shop_json(store, f"{ZARA_BASE}/categories?ajax=true")
         if result[0] != "ok":
             return result
         targets = zara_targets((result[1] or {}).get("categories") or []) if isinstance(result[1], dict) else []
@@ -322,7 +330,7 @@ def zara(store, cursor, sample=False):
             return ("error", "no Zara category tree here")
         cursor = {"targets": targets[:1] if sample else targets, "index": 0, "seen": set()}
     targets, index, seen = cursor["targets"], cursor["index"], cursor["seen"]
-    result = get_json(f"{ZARA_BASE}/category/{targets[index]}/products?ajax=true")
+    result = shop_json(store, f"{ZARA_BASE}/category/{targets[index]}/products?ajax=true")
     if result[0] != "ok":
         if result[0] == "error" and index + 1 < len(targets) and not sample:
             return ("ok", [], {**cursor, "index": index + 1})       # one broken listing is not fatal
