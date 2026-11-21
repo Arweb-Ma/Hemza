@@ -110,8 +110,27 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
   };
 }
 
+/** The API returns at most this many rows per request (Supabase's default `max-rows`). */
+const PAGE_SIZE = 1000;
+/** Safety stop, far above today's catalog. */
+const MAX_ROWS = 50_000;
+
+/** Every row of the `promos` view, read page by page. */
+export async function fetchPromoRows(config: SupabaseConfig): Promise<DealRow[]> {
+  const rows: DealRow[] = [];
+  for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+    const page = await get<DealRow[]>(
+      config,
+      `promos?select=*&order=score.desc,id.asc&limit=${PAGE_SIZE}&offset=${offset}`,
+    );
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 export async function fetchLiveDeals(config: SupabaseConfig): Promise<Deal[]> {
-  const rows = await get<DealRow[]>(config, 'promos?select=*&order=score.desc&limit=2000');
+  const rows = await fetchPromoRows(config);
   if (rows.length === 0) return [];
 
   const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   byScore,
   categoriesIn,
@@ -12,7 +12,7 @@ import {
 import { buildDemoFeed } from '@/lib/demo';
 import { formatMad, pluralize, timeAgo } from '@/lib/format';
 import { sparkline } from '@/lib/sparkline';
-import { toDeal } from '@/lib/supabase';
+import { fetchPromoRows, toDeal } from '@/lib/supabase';
 import type { Deal } from '@/lib/types';
 
 const deal = (overrides: Partial<Deal>): Deal => ({
@@ -232,5 +232,23 @@ describe('duplicates', () => {
       [1, 2, 179],
       [3, 1, 179],
     ]);
+  });
+});
+
+describe('reading the database', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('reads every page of promos, not just the first 1000 rows', async () => {
+    const total = 2345;
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      const offset = Number(new URL(url).searchParams.get('offset'));
+      const count = Math.max(0, Math.min(1000, total - offset));
+      const rows = Array.from({ length: count }, (_, i) => ({ id: offset + i }));
+      return new Response(JSON.stringify(rows), { status: 200 });
+    });
+    const rows = await fetchPromoRows({ url: 'https://db.example', key: 'k' });
+    expect(rows).toHaveLength(total);
+    expect(urls).toHaveLength(3);
   });
 });
