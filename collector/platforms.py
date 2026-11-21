@@ -445,14 +445,15 @@ def lcwaikiki(store, cursor, sample=False):
 # it, we read the rendered page instead: each product card's link, name, image and prices.
 DECATHLON_PATHS = ["5080-promotions"]
 DECATHLON_PRODUCT = re.compile(r"/p/(\d+)-(\d+)-[^/?#]+\.html")
-DECATHLON_JS = r"""() => {
-  const PRODUCT = /\/p\/(\d+)-(\d+)-[^\/?#]+\.html/;
+DECATHLON_JS = r"""(source) => {
+  // Product links: Decathlon's /p/<id>-<attr>-slug.html unless another pattern is given.
+  const PRODUCT = new RegExp(source || '/p/(\\d+)-(\\d+)-[^/?#]+\\.html');
   // A price element: "99 MAD", possibly after a short label ("Prix avant la réduction 299 MAD").
   const PRICE = /^([^\d]{0,50}?)(\d[\d\s  .,]*)\s*(?:MAD|DHS?|Dh|د\.م\.?)\s*$/i;
-  const OLD_WORDS = /avant|ancien|initial|barr|habituel|before|was|r[ée]f[ée]rence|conseill/i;
+  const OLD_WORDS = /avant|ancien|initial|normal|barr|habituel|before|was|r[ée]f[ée]rence|conseill/i;
   const NOT_A_PRICE = /conomi|save|gagn|livraison|offert|d[èe]s\s|remise de/i;   // savings, shipping
   const OLD_CLASS = /old|strike|before|crossed|barr|reference|regular|initial|was/i;
-  const keyOf = a => { const m = (a.getAttribute('href') || '').match(PRODUCT); return m ? m[1] : null; };
+  const keyOf = a => { const m = (a.getAttribute('href') || '').match(PRODUCT); return m ? (m[1] || m[0]) : null; };
   const textOf = e => (e.innerText || e.textContent || '').trim();
   const num = t => {
     let v = t.replace(/[\s  ]/g, '');
@@ -471,13 +472,13 @@ DECATHLON_JS = r"""() => {
     return false;
   };
   const products = [], seen = new Set();
-  for (const a of document.querySelectorAll('a[href*="/p/"]')) {
+  for (const a of document.querySelectorAll('a[href]')) {
     const key = keyOf(a);
     if (!key || seen.has(key)) continue;
     // The card: the largest block around the link that links to this product only.
     let card = a;
     while (card.parentElement && card.parentElement !== document.body) {
-      const keys = new Set([...card.parentElement.querySelectorAll('a[href*="/p/"]')].map(keyOf).filter(Boolean));
+      const keys = new Set([...card.parentElement.querySelectorAll('a[href]')].map(keyOf).filter(Boolean));
       if (keys.size > 1) break;
       card = card.parentElement;
     }
@@ -493,7 +494,7 @@ DECATHLON_JS = r"""() => {
     if (!now.length && !old.length) continue;
     seen.add(key);
     const heading = card.querySelector('h2, h3, h4, [class*="title" i], [class*="name" i]');
-    const linkText = [...card.querySelectorAll('a[href*="/p/"]')].map(l => (l.innerText || '').trim())
+    const linkText = [...card.querySelectorAll('a[href]')].filter(keyOf).map(l => (l.innerText || '').trim())
       .sort((x, y) => y.length - x.length)[0];
     const img = card.querySelector('img');
     const src = img && (img.currentSrc || img.getAttribute('src') || img.getAttribute('data-src')
@@ -533,7 +534,7 @@ def browser_reader():
     return _browser
 
 
-def decathlon_items(store, products, seen):
+def decathlon_items(store, products, seen, default_brand="Decathlon"):
     """Rendered cards → product records. Lowest current price is the price; the struck one the old price."""
     items = []
     for p in products:
@@ -546,10 +547,11 @@ def decathlon_items(store, products, seen):
             price, was = min(old), (max(old) if max(old) > min(old) else None)
         seen.add(p["id"])
         match = DECATHLON_PRODUCT.search(p.get("url") or "")
+        handle = match.group(0)[3:-5] if match else (p.get("url") or "").rsplit("/", 1)[-1].replace(".html", "")
         items.append(item(
-            store, external_id=p["id"], handle=match.group(0)[3:-5] if match else None, title=p.get("title"),
+            store, external_id=p["id"], handle=handle, title=p.get("title"),
             url=p["url"], price=price, compare_at=was, in_stock=not DECATHLON_GONE.search(p.get("text") or ""),
-            image=p.get("image"), brand=(p.get("brand") or "Decathlon").title(), text=[p.get("text")],
+            image=p.get("image"), brand=(p.get("brand") or default_brand).title(), text=[p.get("text")],
         ))
     return items
 
@@ -667,13 +669,26 @@ def magento_page(store, cursor, sample=False):
         cursor = {"targets": store.get("paths") or ["parfum.html"], "index": 0, "page": 1, "seen": set()}
     targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
     url = f"https://{store['domain']}/{targets[index].lstrip('/')}" + (f"?p={page}" if page > 1 else "")
-    result = reader.render(store, url, MAGENTO_PAGE_JS, wait_for=".product-item, li.item.product")
+    result = reader.render(store, url, MAGENTO_PAGE_JS, wait_for=".product-item, li.item.product, .price")
     if result[0] != "ok":
         return result
     found = result[1] or {}
-    if not found.get("products") and page == 1:
-        return ("error", f"no product cards found on {url} (page layout changed?)")
     section = targets[index].rsplit("/", 1)[-1].replace(".html", "").replace("-", " ")
+    if not found.get("products"):
+        # Theme without Magento's usual card markup: any link to a product page with a price next to it.
+        pattern = r"^(?:https?://[^/]+)?/([a-z0-9][a-z0-9-]*)\.html$"
+        cards = reader.evaluate(store, DECATHLON_JS, pattern)
+        if cards[0] != "ok":
+            return cards
+        cards = cards[1] or {}
+        debug_dump(store, f"cards-page{page}", cards)
+        if not cards.get("products") and page == 1:
+            return ("error", f"no product cards found on {url}{reader.snapshot(store, 'no-cards')}")
+        items = decathlon_items(store, cards.get("products") or [], seen, default_brand=store.get("name"))
+        for i in items:
+            i["category"] = i["category"] if i["category"] != "autres" else (store.get("category_hint") or "autres")
+        found = {"pages": cards.get("pages") or 0}
+        return magento_page_next(store, cursor, items, found, sample)
     items = []
     for p in found.get("products") or []:
         key = str(p["id"])
@@ -688,6 +703,11 @@ def magento_page(store, cursor, sample=False):
             in_stock=p.get("in_stock", True), image=p.get("image"), brand=p.get("brand") or store.get("name"),
             text=[section],                       # "parfum" → the Parfums category
         ))
+    return magento_page_next(store, cursor, items, found, sample)
+
+
+def magento_page_next(store, cursor, items, found, sample):
+    targets, index, page = cursor["targets"], cursor["index"], cursor["page"]
     if sample:
         return ("ok", items[:3], None)
     pages = int(found.get("pages") or 0)

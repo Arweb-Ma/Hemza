@@ -170,6 +170,32 @@ def render(store, url, script, wait_for=None):
         return ("error", f"could not read {url}: {str(e).splitlines()[0][:160]}")
 
 
+def evaluate(store, script, arg=None):
+    """Runs `script` again on the page already open for this shop (no new request)."""
+    page, problem = _page(store)
+    if problem:
+        return _refusal(problem)
+    try:
+        return ("ok", page.evaluate(script, arg))
+    except Exception as e:
+        return ("error", f"could not read the page: {str(e).splitlines()[0][:160]}")
+
+
+def snapshot(store, name):
+    """Saves the open page (HTML + screenshot) to the temp folder; returns a note with the paths."""
+    page = _state["pages"].get(store["domain"])
+    if page is None:
+        return ""
+    base = os.path.join(tempfile.gettempdir(), f"hemza-{store['domain']}-{name}")
+    try:
+        with open(base + ".html", "w", encoding="utf-8") as f:
+            f.write(page.content())
+        page.screenshot(path=base + ".png", full_page=False)
+        return f" — page saved: {base}.html and {base}.png"
+    except Exception:
+        return ""
+
+
 def get_json(store, url, headers=None):
     """Asks for `url` from inside the shop's own page (same cookies and origin as the visitor).
     Returns ("ok", data, None) or an error tuple, like platforms.get_json."""
