@@ -521,6 +521,104 @@ class BrandReadersTest(unittest.TestCase):
         self.assertEqual(result, ("ok", [], None))
         self.assertIn("no sale section", out.getvalue())
 
+    def test_shopify_learns_gender_tags_from_the_gender_collections(self):
+        def product(i, title, tags):
+            return {"id": i, "title": title, "handle": f"p{i}", "tags": tags, "product_type": "GP", "vendor": "Kiabi",
+                    "variants": [{"price": "99.00", "compare_at_price": "149.00", "available": True, "option1": "M"}],
+                    "images": []}
+        women = [product(i, "T-shirt imprimé", ["ETE 2026", "UNV1000004"]) for i in range(1, 13)]
+        men = [product(i, "T-shirt imprimé", ["ETE 2026", "UNV1000003"]) for i in range(20, 32)]
+        catalogue = [product(5, "T-shirt imprimé", ["UNV1000004"]),             # seen in k-femme
+                     product(99, "Bermuda en jean slim fit", ["UNV1000003"]),   # not sampled: tag says homme
+                     product(98, "Robe à fleurs", ["UNV1000003"]),              # its name wins: femme
+                     product(97, "Lot de 100 élastiques", ["ETE 2026"])]        # nothing known: unisexe
+        def fake_get_json(url, headers=None):
+            if "/collections/k-femme/" in url:
+                return ("ok", {"products": women}, None)
+            if "/collections/k-homme/" in url:
+                return ("ok", {"products": men}, None)
+            return ("ok", {"products": catalogue}, None)
+        store = {"name": "Kiabi", "domain": "kiabi.ma", "platform": "shopify",
+                 "gender_collections": {"femme": ["k-femme"], "homme": ["k-homme"]}}
+        real, platforms.get_json = platforms.get_json, fake_get_json
+        try:
+            cursor, items, steps = None, [], 0
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                self.assertEqual(status, "ok")
+                items += page
+                steps += 1
+                if cursor is None:
+                    break
+        finally:
+            platforms.get_json = real
+        self.assertEqual(steps, 3)                                   # 2 collections, then the catalogue
+        self.assertEqual({i["external_id"]: i["gender"] for i in items},
+                         {"5": "femme", "99": "homme", "98": "femme", "97": "unisexe"})
+
+    def test_prestashop_gender_paths_first_and_no_overwrite(self):
+        def product(i, name):
+            return {"id_product": i, "name": name, "url": f"https://lacoste.ma/accueil/{i}-x.html",
+                    "price_amount": 700.0, "regular_price_amount": 1000.0, "has_discount": True, "category_name": "Accueil"}
+        listings = {"lacoste/4-enfant": [product(3, "Polo regular fit")],
+                    "lacoste/3-femme": [product(2, "Polo Paris regular fit")],
+                    "lacoste/1-homme": [product(1, "Polo Paris regular fit")],
+                    "index.php?controller=category&id_category=2": [product(1, "Polo Paris regular fit"),
+                                                                     product(2, "Polo Paris regular fit"),
+                                                                     product(4, "Casquette twill de coton")]}
+        def fake_get_json(url, headers=None):
+            path = url.split("lacoste.ma/", 1)[1].split("?page=")[0].split("&page=")[0]
+            return ("ok", {"products": listings.get(path, []), "pagination": {"pages_count": 1}}, None)
+        store = {"name": "Lacoste", "domain": "lacoste.ma", "platform": "prestashop",
+                 "gender_paths": ["lacoste/4-enfant", "lacoste/3-femme", "lacoste/1-homme"],
+                 "paths": ["index.php?controller=category&id_category=2"]}
+        real, platforms.get_json = platforms.get_json, fake_get_json
+        try:
+            cursor, items = None, []
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                items += page
+                if cursor is None:
+                    break
+        finally:
+            platforms.get_json = real
+        self.assertEqual([(i["external_id"], i["gender"]) for i in items],
+                         [("3", "enfant"), ("2", "femme"), ("1", "homme"), ("4", "unisexe")])
+
+    def test_browser_cards_gender_from_address_then_listing(self):
+        def card(path):
+            return {"id": path, "url": "https://www.defacto.com" + path, "title": "Blazer à col officier",
+                    "image": None, "brand": None, "now": [199.0], "old": [299.0], "text": ""}
+        class Fake:
+            def render(self, store, url, script, wait_for=None, arg=None):
+                if "man-discount" in url and "woman" not in url:
+                    return ("ok", {"products": [card("/fr-ma/oversize-hakim-yaka-blazer-ceket-1"),
+                                                card("/fr-ma/kadin-blazer-2")]})
+                return ("ok", {"products": []})
+            def snapshot(self, store, name):
+                return ""
+        platforms._browser = Fake()
+        try:
+            store = {"name": "DeFacto", "domain": "www.defacto.com", "platform": "browser_cards", "prefix": "/fr-ma/",
+                     "paths": ["man-discount-product-ma"]}
+            status, items, cursor = platforms.fetch(store, None)
+        finally:
+            platforms._browser = None
+        self.assertEqual([i["gender"] for i in items], ["homme", "femme"])    # listing; then address (kadin)
+
+    def test_zara_section_fills_a_missing_product_section(self):
+        suit = {**zara_product(1), "name": "COSTUME CONFORT"}
+        suit.pop("sectionName", None)
+        zara = {"tree": ZARA_TREE, "listings": {121: [], 111: [suit], 21: []}}
+        store = {"name": "Zara", "domain": "zara.com", "platform": "zara"}
+        world, cursor, items = World(zara=zara), None, []
+        while True:
+            status, page, cursor = read_one(world, store, cursor)
+            items += page
+            if cursor is None:
+                break
+        self.assertEqual([(i["title"], i["gender"]) for i in items], [("COSTUME CONFORT", "femme")])   # 111 is in FEMME
+
     def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
         black = zara_product(1, price=39900, old=None)
         red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}

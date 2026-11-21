@@ -21,7 +21,7 @@ import html, json, os, re, tempfile
 from urllib.parse import quote
 import requests
 
-from classify import classify
+from classify import classify, gender_in
 
 UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
 TIMEOUT = 30
@@ -69,12 +69,13 @@ def get_text(url):
 
 
 def item(store, *, external_id, title, url, price, compare_at, in_stock, image=None, brand=None,
-         sizes=(), handle=None, text=(), gender=None):
+         sizes=(), handle=None, text=(), gender=None, gender_hint=None):
     """Builds the common product record. `text` is extra wording used only for classification.
-    `gender` forces the section when the shop states it (e.g. Zara's KID section holds dresses too)."""
+    `gender` forces the section when the shop states it (e.g. Zara's KID section holds dresses too).
+    `gender_hint` (from the listing or the product address) is used when the name says nothing."""
     title = html.unescape(title or "").strip()
     guessed, category = classify(title, " ".join(t for t in text if t), [],
-                                 store.get("gender_hint"), store.get("category_hint"))
+                                 gender_hint or store.get("gender_hint"), store.get("category_hint"))
     gender = gender or guessed
     return {
         "external_id": str(external_id), "handle": handle, "title": title, "brand": brand or None,
@@ -88,8 +89,46 @@ def item(store, *, external_id, title, url, price, compare_at, in_stock, image=N
 # ------------------------------------------------------------------ Shopify
 SHOPIFY_LIMIT = 250
 
+def shopify_gender_learn(store, cursor):
+    """gender_collections ({"femme": ["k-femme"], …}): reads the first pages of each gender collection
+    and learns which tags only ever appear in one gender (Kiabi's 'UNV1000003'-style codes). The whole
+    catalogue is then read as usual; products seen in a collection keep its gender, the others get
+    the gender their tags point to (unless their name says otherwise)."""
+    queue = cursor["queue"]
+    gender, handle, page = queue[0]
+    result = get_json(f"https://{store['domain']}/collections/{quote(handle)}/products.json?limit={SHOPIFY_LIMIT}&page={page}")
+    products = (result[1] or {}).get("products") if result[0] == "ok" and isinstance(result[1], dict) else None
+    rest = queue[1:]
+    if products:
+        for p in products:
+            cursor["direct"].setdefault(p["id"], gender)
+            for tag in p.get("tags") or []:
+                cursor["tags"].setdefault(tag, {}).setdefault(gender, 0)
+                cursor["tags"][tag][gender] += 1
+        if len(products) == SHOPIFY_LIMIT and page < int(store.get("gender_pages") or 2):
+            rest = [(gender, handle, page + 1)] + rest
+    elif result[0] == "throttled":
+        return result
+    if rest:
+        return ("ok", [], {**cursor, "queue": rest})
+    learned = {}
+    for tag, counts in cursor["tags"].items():
+        total = sum(counts.values())
+        top, n = max(counts.items(), key=lambda kv: kv[1])
+        if total >= 10 and n / total >= 0.9:
+            learned[tag] = top
+    return ("ok", [], {"page": 1, "direct": cursor["direct"], "learned": learned})
+
+
 def shopify(store, cursor, sample=False):
-    page = cursor or 1
+    if store.get("gender_collections") and not sample:
+        if cursor is None:
+            queue = [(g, h, 1) for g, handles in store["gender_collections"].items() for h in handles]
+            cursor = {"queue": queue, "direct": {}, "tags": {}}
+        if "queue" in cursor:
+            return shopify_gender_learn(store, cursor)
+    genders = cursor if isinstance(cursor, dict) else {}
+    page = genders.get("page", 1) if genders else (cursor or 1)
     limit = 3 if sample else SHOPIFY_LIMIT
     result = get_json(f"https://{store['domain']}/products.json?limit={limit}&page={page}")
     if result[0] != "ok":
@@ -105,8 +144,12 @@ def shopify(store, cursor, sample=False):
         available = [v for v in variants if v.get("available")]
         best = min(available or variants, key=lambda v: float(v.get("price") or 1e9))
         compare_at = best.get("compare_at_price")
+        votes = [genders.get("learned", {}).get(t) for t in p.get("tags") or []]
+        votes = [v for v in votes if v]
+        from_tags = max(set(votes), key=votes.count) if votes else None
         items.append(item(
             store, external_id=p["id"], handle=p.get("handle"), title=p.get("title"),
+            gender=genders.get("direct", {}).get(p["id"]), gender_hint=from_tags,
             url=f"https://{store['domain']}/products/{p.get('handle')}",
             price=best["price"], compare_at=compare_at if compare_at not in (None, "", "0.00") else None,
             in_stock=bool(available), image=(p.get("images") or [{}])[0].get("src"), brand=p.get("vendor"),
@@ -114,6 +157,8 @@ def shopify(store, cursor, sample=False):
             text=[p.get("product_type"), " ".join(p.get("tags") or [])],
         ))
     more = len(data["products"]) == SHOPIFY_LIMIT and page < MAX_PAGES
+    if genders:
+        return ("ok", items, {**genders, "page": page + 1} if more else None)
     return ("ok", items, page + 1 if more else None)
 
 
@@ -165,26 +210,35 @@ def woocommerce(store, cursor, sample=False):
 PRESTA_PATHS = ["index.php?controller=category&id_category=2", "index.php?controller=prices-drop"]
 
 def prestashop(store, cursor, sample=False):
-    paths = store.get("paths") or PRESTA_PATHS
-    index, page = cursor or (0, 1)
+    # gender_paths: the shop's Homme / Femme / Enfant categories, read before the whole catalogue so
+    # each product keeps the gender of the section it was found in (Lacoste names rarely say it).
+    gendered = list(store.get("gender_paths") or [])
+    paths = gendered + list(store.get("paths") or PRESTA_PATHS)
+    index, page, *rest = cursor or (0, 1)
+    seen = rest[0] if rest else set()
     path = paths[index].lstrip("/")
     url = f"https://{store['domain']}/{path}{'&' if '?' in path else '?'}page={page}&from-xhr"
     result = get_json(url, {"X-Requested-With": "XMLHttpRequest"})
     if result[0] != "ok":
         # A missing listing is not fatal while other listings remain.
         if result[0] == "error" and index + 1 < len(paths) and not sample:
-            return ("ok", [], (index + 1, 1))
+            return ("ok", [], (index + 1, 1, seen) if gendered else (index + 1, 1))
         return result
     data = result[1]
     if not isinstance(data, dict) or not isinstance(data.get("products"), list):
         return ("error", "no PrestaShop JSON listing here")
-    items = presta_items(store, data["products"])
+    hint = gender_in(path) if index < len(gendered) else None
+    items = [i for i in presta_items(store, data["products"], gender_hint=hint) if i["external_id"] not in seen]
+    if gendered:
+        seen.update(i["external_id"] for i in items)
     if sample:
         return ("ok", items, None)
+    def at(i, p):
+        return (i, p, seen) if gendered else (i, p)
     pages = int((data.get("pagination") or {}).get("pages_count") or 1)
     if page < min(pages, MAX_PAGES):
-        return ("ok", items, (index, page + 1))
-    return ("ok", items, (index + 1, 1) if index + 1 < len(paths) else None)
+        return ("ok", items, at(index, page + 1))
+    return ("ok", items, at(index + 1, 1) if index + 1 < len(paths) else None)
 
 
 def money_text(text):
@@ -202,7 +256,7 @@ def money_text(text):
         return None
 
 
-def presta_items(store, products):
+def presta_items(store, products, gender_hint=None):
     """PrestaShop listing JSON → product records (shared by the plain and browser readers)."""
     items = []
     for p in products:
@@ -226,7 +280,7 @@ def presta_items(store, products):
             store, external_id=product_id, handle=p.get("link_rewrite"), title=p.get("name"), url=product_url,
             price=price, compare_at=regular if discounted else None,
             in_stock=p.get("availability") != "unavailable", image=image, brand=p.get("manufacturer_name"),
-            text=[p.get("category_name")],
+            text=[p.get("category_name")], gender_hint=gender_hint,
         ))
     return items
 
@@ -282,7 +336,7 @@ ZARA_SECTIONS = {"WOMAN": "femme", "MAN": "homme", "KID": "enfant"}
 ZARA_SKIP_FAMILIES = {"PERFUME", "PERFUMES", "FRAGRANCE", "COSMETICS", "MAKE UP", "MAKEUP", "BEAUTY"}
 ZARA_LISTINGS = {"TOUT VOIR", "TOUT AFFICHER"}
 
-def zara_targets(categories):
+def zara_targets(categories, sections=None):
     """Category ids worth reading: every "TOUT VOIR" listing of the women, men and kids sections,
     price-drop listings first. A section without such listings falls back to its leaf categories."""
     sale, listings = [], []
@@ -306,6 +360,8 @@ def zara_targets(categories):
                         found.append(c["id"])
         walk(root.get("subcategories") or [], False)
         listings += found or leaves
+        if sections is not None:
+            sections.update({cid: ZARA_SECTIONS[section] for cid in leaves})
     seen, ordered = set(), []
     for cid in sale + listings:
         if cid not in seen:
@@ -327,10 +383,11 @@ def zara(store, cursor, sample=False):
         result = shop_json(store, f"{ZARA_BASE}/categories?ajax=true")
         if result[0] != "ok":
             return result
-        targets = zara_targets((result[1] or {}).get("categories") or []) if isinstance(result[1], dict) else []
+        sections = {}
+        targets = zara_targets((result[1] or {}).get("categories") or [], sections) if isinstance(result[1], dict) else []
         if not targets:
             return ("error", "no Zara category tree here")
-        cursor = {"targets": targets[:1] if sample else targets, "index": 0, "seen": set()}
+        cursor = {"targets": targets[:1] if sample else targets, "index": 0, "seen": set(), "sections": sections}
     targets, index, seen = cursor["targets"], cursor["index"], cursor["seen"]
     result = shop_json(store, f"{ZARA_BASE}/category/{targets[index]}/products?ajax=true")
     if result[0] != "ok":
@@ -361,7 +418,7 @@ def zara(store, cursor, sample=False):
             price=price / 100, compare_at=old / 100 if old else None,
             in_stock=p.get("availability") not in ("out_of_stock", "coming_soon"),
             image=zara_image(p), brand="Zara",
-            gender=ZARA_SECTIONS.get(p.get("sectionName")),
+            gender=ZARA_SECTIONS.get(p.get("sectionName")) or (cursor.get("sections") or {}).get(targets[index]),
             text=[p.get("familyName"), p.get("subfamilyName")],
         ))
     if sample:
@@ -540,7 +597,7 @@ def shout_to_title(brand):
     return brand.title() if brand and brand.isupper() else brand
 
 
-def decathlon_items(store, products, seen, default_brand="Decathlon"):
+def decathlon_items(store, products, seen, default_brand="Decathlon", listing_gender=None):
     """Rendered cards → product records. Lowest current price is the price; the struck one the old price."""
     items = []
     for p in products:
@@ -558,6 +615,7 @@ def decathlon_items(store, products, seen, default_brand="Decathlon"):
             store, external_id=p["id"], handle=handle, title=p.get("title"),
             url=p["url"], price=price, compare_at=was, in_stock=not DECATHLON_GONE.search(p.get("text") or ""),
             image=p.get("image"), brand=shout_to_title(p.get("brand") or default_brand), text=[p.get("text")],
+            gender_hint=gender_in(p.get("url")) or listing_gender,
         ))
     return items
 
@@ -791,7 +849,8 @@ def browser_cards(store, cursor, sample=False):
     debug_dump(store, f"cards-{index}-{page}", cards)
     listing_paths = set(targets)
     products = [p for p in cards.get("products") or [] if p["id"] not in listing_paths]
-    items = decathlon_items(store, products, seen, default_brand=store.get("name"))
+    items = decathlon_items(store, products, seen, default_brand=store.get("name"),
+                            listing_gender=gender_in(targets[index]))
     cursor = {**cursor, "found_any": cursor["found_any"] or bool(items)}
     following = {**cursor, "index": index + 1, "page": 1} if index + 1 < len(targets) else None
     if not following and not cursor["found_any"]:
@@ -822,6 +881,11 @@ def fetch(store, cursor, sample=False):
 
 
 def label(cursor):
+    if isinstance(cursor, dict) and "queue" in cursor:
+        gender, handle, page = cursor["queue"][0]
+        return f"learning genders: collection {handle}, page {page}"
+    if isinstance(cursor, dict) and "targets" not in cursor:
+        return f"page {cursor.get('page', 1)}"
     if isinstance(cursor, dict):
         page = f", page {cursor['page']}" if cursor.get("page", 1) > 1 else ""
         return f"listing {cursor['index'] + 1}/{len(cursor['targets'])}{page}"
