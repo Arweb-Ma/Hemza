@@ -416,12 +416,99 @@ class BrandReadersTest(unittest.TestCase):
         self.assertRegex(out, r"zara\.com\s+zara\s+2 products\s+complete")
 
 
+class FakeBrowser:
+    """Stands in for browser.py: `json_pages` answers the PrestaShop JSON, `cards` the rendered pages."""
+    def __init__(self, json_pages=None, cards=None, refuse=False):
+        self.json_pages, self.cards, self.refuse, self.calls = json_pages, cards or {}, refuse, []
+
+    def get_json(self, store, url, headers=None):
+        self.calls.append(("json", url))
+        if self.refuse:
+            return ("throttled", None, "bot challenge or refusal (HTTP 403)")
+        if self.json_pages is None:
+            return ("error", "answered with a web page, not data [browser]")
+        page = int((re.search(r"[?&]page=(\d+)", url) or [0, 1])[1])
+        return ("ok", {"products": self.json_pages[page - 1], "pagination": {"pages_count": len(self.json_pages)}}, None)
+
+    def render(self, store, url, script, wait_for=None):
+        self.calls.append(("page", url))
+        page = int((re.search(r"[?&]page=(\d+)", url) or [0, 1])[1])
+        return ("ok", {"products": self.cards.get(page, []), "pages": len(self.cards)})
+
+
+def card(i, now=(99.0,), old=(299.0,), title=None, text=""):
+    return {"id": str(i), "url": f"https://www.decathlon.ma/p/{i}-1-produit-{i}.html", "title": title or f"Veste femme {i}",
+            "image": f"https://contents.mediadecathlon.com/p{i}/prod.jpg", "brand": "QUECHUA",
+            "now": list(now), "old": list(old), "text": text}
+
+
+class DecathlonTest(unittest.TestCase):
+    STORE = {"name": "Decathlon", "domain": "www.decathlon.ma", "platform": "decathlon", "skip_other": True}
+
+    def read_all(self, fake, store=None):
+        platforms._browser = fake
+        try:
+            cursor, items, steps = None, [], 0
+            while True:
+                result = platforms.fetch(store or self.STORE, cursor)
+                if result[0] != "ok":
+                    return result, items, steps
+                items, cursor, steps = items + result[1], result[2], steps + 1
+                if cursor is None:
+                    return result, items, steps
+        finally:
+            platforms._browser = None
+
+    def test_reads_rendered_cards_when_the_shop_offers_no_json(self):
+        fake = FakeBrowser(cards={1: [card(1), card(2, now=(119.0,), old=(), title="Chaussures enfant NH100",
+                                                     text="Rupture de stock"),
+                                      card(3, title="Housse de pagaie")],
+                                  2: [card(1), card(4, now=(799.0, 1299.0), old=(), title="Doudoune homme")]})
+        _, items, steps = self.read_all(fake)
+        self.assertEqual(steps, 2)
+        self.assertEqual([i["external_id"] for i in items], ["1", "2", "4"])     # no repeat, no paddle cover
+        first = items[0]
+        self.assertEqual((first["_price"], first["_compare_at"], first["gender"], first["category"]),
+                         (99.0, 299.0, "femme", "vestes"))
+        self.assertEqual((first["brand"], first["handle"]), ("Quechua", "1-1-produit-1"))
+        self.assertEqual((items[1]["_compare_at"], items[1]["in_stock"]), (None, False))
+        self.assertEqual((items[2]["_price"], items[2]["_compare_at"]), (799.0, 1299.0))  # two unlabelled prices
+        self.assertEqual([kind for kind, _ in fake.calls], ["json", "page", "page"])     # JSON tried once only
+        self.assertTrue(fake.calls[0][1].endswith("/5080-promotions?from-xhr"))
+        self.assertTrue(fake.calls[2][1].endswith("/5080-promotions?page=2"))
+
+    def test_prefers_the_prestashop_json(self):
+        fake = FakeBrowser(json_pages=[[presta_product(1)], [presta_product(2), presta_product(1)]])
+        _, items, steps = self.read_all(fake)
+        self.assertEqual((steps, [i["external_id"] for i in items]), (2, ["1", "2"]))
+        self.assertEqual((items[0]["_price"], items[0]["_compare_at"]), (700.0, 1300.0))
+        self.assertEqual({kind for kind, _ in fake.calls}, {"json"})
+
+    def test_a_refusal_is_reported_as_throttled(self):
+        result, items, _ = self.read_all(FakeBrowser(refuse=True))
+        self.assertEqual((result[0], items), ("throttled", []))
+
+    def test_stops_at_max_pages(self):
+        fake = FakeBrowser(cards={n: [card(n)] for n in range(1, 6)})
+        _, items, steps = self.read_all(fake, {**self.STORE, "max_pages": 3})
+        self.assertEqual((steps, len(items)), (3, 3))
+
+    def test_runs_in_the_collector(self):
+        platforms._browser = FakeBrowser(cards={1: [card(1)]})
+        try:
+            out = run(World(), [self.STORE])
+        finally:
+            platforms._browser = None
+        self.assertRegex(out, r"www\.decathlon\.ma\s+decathlon\s+1 products\s+complete")
+
+
 class ClassifyTest(unittest.TestCase):
     def test_gender_and_category(self):
         self.assertEqual(collect.classify("Robe longue satin", "", ["Femme"]), ("femme", "robes"))
         self.assertEqual(collect.classify("Ensemble garçon 6 ans", "", []), ("enfant", "ensembles"))
         self.assertEqual(collect.classify("حذاء رجالي جلد", "", []), ("homme", "chaussures"))
         self.assertEqual(collect.classify("Shorts Homme Coupe Ample", "", []), ("homme", "pantalons"))
+        self.assertEqual(collect.classify("Legging de sport taille haute", "", [])[1], "pantalons")
 
     def test_store_hints_fill_the_gaps(self):
         self.assertEqual(collect.classify("Uncloud Fermée Noir", "", [], "homme", "accessoires"), ("homme", "accessoires"))

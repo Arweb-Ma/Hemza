@@ -41,6 +41,12 @@ jobs:
           cache: pip
           cache-dependency-path: collector/requirements.txt
       - run: pip install -r collector/requirements.txt
+      # Decathlon.ma is read with a headless Chromium (collector/browser.py); only the brands need it.
+      - name: Install the browser reader
+        if: ${{ env.TIER == 'marque' }}
+        run: |
+          pip install -r collector/requirements-browser.txt
+          python -m playwright install --with-deps chromium
       - name: Collect (${{ env.TIER }}) and post
         run: python collector/run.py --tier "$TIER" --max-minutes 45
       - name: Rebuild the site with the new prices

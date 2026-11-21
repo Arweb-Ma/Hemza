@@ -1,5 +1,5 @@
 """
-Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop, Magento, Zara), classifies items
+Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop, Magento, Zara, LC Waikiki, Decathlon), classifies items
 (femme / homme / enfant + category) and writes prices to Supabase.
 
 Usage (PowerShell: $env:NAME = "value" instead of export):

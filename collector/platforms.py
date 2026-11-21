@@ -13,6 +13,7 @@ PrestaShop   listing pages asked for as JSON     the same data the shop's own "l
 Magento      /graphql                            the public GraphQL catalog (Marwa)
 Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma category pages
 LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
+Decathlon    the "Promotions" listing, in a browser   PrestaShop JSON if offered, else the rendered cards
 """
 import html, json, re
 from urllib.parse import quote
@@ -175,8 +176,19 @@ def prestashop(store, cursor, sample=False):
     data = result[1]
     if not isinstance(data, dict) or not isinstance(data.get("products"), list):
         return ("error", "no PrestaShop JSON listing here")
+    items = presta_items(store, data["products"])
+    if sample:
+        return ("ok", items, None)
+    pages = int((data.get("pagination") or {}).get("pages_count") or 1)
+    if page < min(pages, MAX_PAGES):
+        return ("ok", items, (index, page + 1))
+    return ("ok", items, (index + 1, 1) if index + 1 < len(paths) else None)
+
+
+def presta_items(store, products):
+    """PrestaShop listing JSON → product records (shared by the plain and browser readers)."""
     items = []
-    for p in data["products"]:
+    for p in products:
         price, product_id = p.get("price_amount"), p.get("id_product")
         product_url = p.get("url") or p.get("link")
         if price is None or product_id is None or not product_url:
@@ -189,12 +201,7 @@ def prestashop(store, cursor, sample=False):
             in_stock=p.get("availability") != "unavailable", image=image, brand=p.get("manufacturer_name"),
             text=[p.get("category_name")],
         ))
-    if sample:
-        return ("ok", items, None)
-    pages = int((data.get("pagination") or {}).get("pages_count") or 1)
-    if page < min(pages, MAX_PAGES):
-        return ("ok", items, (index, page + 1))
-    return ("ok", items, (index + 1, 1) if index + 1 < len(paths) else None)
+    return items
 
 
 # ------------------------------------------------------------------ Magento (GraphQL)
@@ -390,8 +397,169 @@ def lcwaikiki(store, cursor, sample=False):
     return ("ok", items, following)
 
 
+# ------------------------------------------------------------------ Decathlon (through a browser)
+# decathlon.ma (PrestaShop) refuses plain HTTP clients, so it is read with a headless Chromium
+# (browser.py). We read only its "Promotions" listing (robots.txt allows it and `?page=N`).
+# First choice: the PrestaShop JSON the listing's own "load more" uses. If the shop does not answer
+# it, we read the rendered page instead: each product card's link, name, image and prices.
+DECATHLON_PATHS = ["5080-promotions"]
+DECATHLON_PRODUCT = re.compile(r"/p/(\d+)-(\d+)-[^/?#]+\.html")
+DECATHLON_JS = r"""() => {
+  const PRODUCT = /\/p\/(\d+)-(\d+)-[^\/?#]+\.html/;
+  // A price element: "99 MAD", possibly after a short label ("Prix avant la réduction 299 MAD").
+  const PRICE = /^([^\d]{0,50}?)(\d[\d\s  .,]*)\s*(?:MAD|DHS?|Dh|د\.م\.?)\s*$/i;
+  const OLD_WORDS = /avant|ancien|initial|barr|habituel|before|was|r[ée]f[ée]rence|conseill/i;
+  const NOT_A_PRICE = /conomi|save|gagn|livraison|offert|d[èe]s\s|remise de/i;   // savings, shipping
+  const OLD_CLASS = /old|strike|before|crossed|barr|reference|regular|initial|was/i;
+  const keyOf = a => { const m = (a.getAttribute('href') || '').match(PRODUCT); return m ? m[1] : null; };
+  const textOf = e => (e.innerText || e.textContent || '').trim();
+  const num = t => {
+    let v = t.replace(/[\s  ]/g, '');
+    v = /,\d{1,2}$/.test(v) ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+    return parseFloat(v);
+  };
+  const isOld = (e, card) => {
+    for (let x = e; x && x !== card; x = x.parentElement) {
+      if (/^(DEL|S|STRIKE)$/.test(x.tagName)) return true;
+      if (OLD_CLASS.test(typeof x.className === 'string' ? x.className : (x.getAttribute('class') || ''))) return true;
+      if ((getComputedStyle(x).textDecorationLine || '').includes('line-through')) return true;
+      if (OLD_WORDS.test((x.getAttribute('aria-label') || '') + ' ' + (x.getAttribute('title') || ''))) return true;
+      const prev = x.previousElementSibling;
+      if (prev && textOf(prev).length < 60 && OLD_WORDS.test(textOf(prev)) && !PRICE.test(textOf(prev))) return true;
+    }
+    return false;
+  };
+  const products = [], seen = new Set();
+  for (const a of document.querySelectorAll('a[href*="/p/"]')) {
+    const key = keyOf(a);
+    if (!key || seen.has(key)) continue;
+    // The card: the largest block around the link that links to this product only.
+    let card = a;
+    while (card.parentElement && card.parentElement !== document.body) {
+      const keys = new Set([...card.parentElement.querySelectorAll('a[href*="/p/"]')].map(keyOf).filter(Boolean));
+      if (keys.size > 1) break;
+      card = card.parentElement;
+    }
+    const now = [], old = [];
+    for (const e of card.querySelectorAll('*')) {
+      const m = textOf(e).match(PRICE);
+      if (!m || [...e.children].some(c => PRICE.test(textOf(c)))) continue;   // the smallest element only
+      const value = num(m[2]);
+      if (!(value > 0)) continue;
+      if (NOT_A_PRICE.test(m[1])) continue;
+      (OLD_WORDS.test(m[1]) || isOld(e, card) ? old : now).push(value);
+    }
+    if (!now.length && !old.length) continue;
+    seen.add(key);
+    const heading = card.querySelector('h2, h3, h4, [class*="title" i], [class*="name" i]');
+    const linkText = [...card.querySelectorAll('a[href*="/p/"]')].map(l => (l.innerText || '').trim())
+      .sort((x, y) => y.length - x.length)[0];
+    const img = card.querySelector('img');
+    const src = img && (img.currentSrc || img.getAttribute('src') || img.getAttribute('data-src')
+      || (img.getAttribute('srcset') || '').split(' ')[0]);
+    const brand = card.querySelector('[class*="brand" i]');
+    products.push({
+      id: key, url: a.href.split(/[?#]/)[0],
+      title: (heading && heading.innerText.trim()) || linkText || (img && img.alt) || '',
+      image: src && !src.startsWith('data:') ? new URL(src, location.href).href : null,
+      brand: brand ? brand.innerText.trim() : null,
+      now, old, text: card.innerText.slice(0, 400),
+    });
+  }
+  // Page count: "1 sur 55" / "1 of 55" near the pagination, or the highest ?page=N link.
+  let pages = 0;
+  for (const l of document.querySelectorAll('a[href*="page="]')) {
+    const m = l.href.match(/[?&]page=(\d+)/);
+    if (m) pages = Math.max(pages, +m[1]);
+  }
+  const pagers = '[class*="pagination" i], nav, [aria-label*="pagination" i]';
+  for (const e of document.querySelectorAll(`${pagers.split(', ').map(p => p + ' *').join(', ')}`)) {
+    if (e.children.length) continue;                       // one line of text at a time
+    const m = textOf(e).match(/^\D{0,12}\d+\s*(?:sur|of|\/)\s*(\d+)\s*$/i);
+    if (m) pages = Math.max(pages, +m[1]);
+  }
+  return {products, pages};
+}"""
+DECATHLON_GONE = re.compile(r"rupture|indisponible|[ée]puis[ée]", re.I)
+
+_browser = None                                     # tests put a fake here
+
+def browser_reader():
+    global _browser
+    if _browser is None:
+        import browser
+        _browser = browser
+    return _browser
+
+
+def decathlon_items(store, products, seen):
+    """Rendered cards → product records. Lowest current price is the price; the struck one the old price."""
+    items = []
+    for p in products:
+        if p["id"] in seen:
+            continue
+        now, old = p.get("now") or [], p.get("old") or []
+        if now:
+            price, was = min(now), (max(old) if old else (max(now) if max(now) > min(now) else None))
+        else:                                       # only prices we could not tell apart
+            price, was = min(old), (max(old) if max(old) > min(old) else None)
+        seen.add(p["id"])
+        match = DECATHLON_PRODUCT.search(p.get("url") or "")
+        items.append(item(
+            store, external_id=p["id"], handle=match.group(0)[3:-5] if match else None, title=p.get("title"),
+            url=p["url"], price=price, compare_at=was, in_stock=not DECATHLON_GONE.search(p.get("text") or ""),
+            image=p.get("image"), brand=(p.get("brand") or "Decathlon").title(), text=[p.get("text")],
+        ))
+    return items
+
+
+def decathlon(store, cursor, sample=False):
+    reader = browser_reader()
+    if cursor is None:
+        cursor = {"targets": store.get("paths") or DECATHLON_PATHS, "index": 0, "page": 1,
+                  "seen": set(), "mode": None}
+    targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
+    following = {**cursor, "index": index + 1, "page": 1} if index + 1 < len(targets) else None
+    url = f"https://{store['domain']}/{targets[index].lstrip('/')}"
+    url += f"?page={page}" if page > 1 else ""
+    limit = int(store.get("max_pages") or MAX_PAGES)
+    pages, items = 0, None
+
+    if cursor["mode"] in (None, "json"):
+        result = reader.get_json(store, url + ("&" if "?" in url else "?") + "from-xhr",
+                                 {"X-Requested-With": "XMLHttpRequest"})
+        if result[0] == "throttled":
+            return result
+        data = result[1] if result[0] == "ok" else None
+        if isinstance(data, dict) and isinstance(data.get("products"), list) and data["products"]:
+            cursor = {**cursor, "mode": "json"}
+            fresh = [p for p in presta_items(store, data["products"]) if p["external_id"] not in seen]
+            seen.update(p["external_id"] for p in fresh)
+            items = fresh
+            pages = int((data.get("pagination") or {}).get("pages_count") or 0)
+        else:
+            cursor = {**cursor, "mode": "page"}
+
+    if items is None:
+        result = reader.render(store, url, DECATHLON_JS, wait_for='a[href*="/p/"]')
+        if result[0] != "ok":
+            return result
+        found = result[1] or {}
+        if not found.get("products") and page == 1:
+            return ("error", f"no product cards found on {url} (page layout changed?)")
+        items = decathlon_items(store, found.get("products") or [], seen)
+        pages = int(found.get("pages") or 0)
+
+    if sample:
+        return ("ok", items[:3], None)
+    more = page < limit and items and (page < pages if pages else True)
+    if more:
+        return ("ok", items, {**cursor, "page": page + 1})
+    return ("ok", items, following and {**following, "mode": cursor["mode"]})
+
+
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
-            "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki}
+            "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki, "decathlon": decathlon}
 # Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
 GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
@@ -400,7 +568,11 @@ def fetch(store, cursor, sample=False):
     adapter = ADAPTERS.get(store.get("platform", "shopify"))
     if adapter is None:
         return ("error", f"unknown platform '{store.get('platform')}' (use: {', '.join(ADAPTERS)})")
-    return adapter(store, cursor, sample)
+    result = adapter(store, cursor, sample)
+    # Sports shops also sell tents and paddles: keep only what we can sort into a clothing category.
+    if store.get("skip_other") and result[0] == "ok":
+        result = ("ok", [i for i in result[1] if i["category"] != "autres"], result[2])
+    return result
 
 
 def label(cursor):

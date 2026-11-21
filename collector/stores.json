@@ -1,6 +1,6 @@
 {
-  "_comment": "tier 'marque' = big brands shown on the main pages and on Telegram; tier 'boutique' = small shops, shown in their own section. sale_only = we read only the shop's sale listings (its share of catalog on sale is then not measured). Check a new shop first with: python collect.py --detect <domain>",
-  "_not_readable_yet": "Refuse requests that identify as a bot (HTTP 403): adidas.co.ma, defacto.com, parfois.ma, Lefties. No own Moroccan online shop found: Celio, Beauty Success, Faces (Glovo only). Zara (platform 'zara' is built and tested, but zara.com refuses requests that identify as a bot; needs Inditex's permission or a feed). Blocked by anti-bot protection when read from a server (Nov 2026): Pull&Bear, Bershka, Stradivarius, Massimo Dutti, Oysho, Lefties (Inditex itxrest API behind Akamai), Mango (Vercel checkpoint), H&M, Lacoste.com, DeFacto, Decathlon.ma, Marjane Mall and Jumia official stores (Nike, Adidas, Celio, DeFacto).",
+  "_comment": "tier 'marque' = big brands shown on the main pages and on Telegram; tier 'boutique' = small shops, shown in their own section. sale_only = we read only the shop's sale listings (its share of catalog on sale is then not measured). Platform 'decathlon' is read with a headless Chromium (collector/browser.py). skip_other = drop items that are not clothing, shoes or bags. Check a new shop first with: python collect.py --detect <domain>",
+  "_not_readable_yet": "Refuse requests that identify as a bot (HTTP 403): adidas.co.ma, defacto.com, parfois.ma, Lefties. No own Moroccan online shop found: Celio, Beauty Success, Faces (Glovo only). Zara (platform 'zara' is built and tested, but zara.com refuses requests that identify as a bot; needs Inditex's permission or a feed). Blocked by anti-bot protection when read from a server (Nov 2026): Pull&Bear, Bershka, Stradivarius, Massimo Dutti, Oysho, Lefties (Inditex itxrest API behind Akamai), Mango (Vercel checkpoint), H&M, Lacoste.com, DeFacto, Marjane Mall and Jumia official stores (Nike, Adidas, Celio, DeFacto).",
   "stores": [
     { "name": "Marwa", "domain": "www.marwa.com", "platform": "magento", "tier": "marque", "gender_hint": "femme" },
     { "name": "Kiabi", "domain": "kiabi.ma", "platform": "shopify", "tier": "marque", "gender_hint": null },
@@ -8,6 +8,7 @@
     { "name": "Aldo", "domain": "aldoshoes.ma", "platform": "prestashop", "tier": "marque", "gender_hint": null, "category_hint": "chaussures" },
     { "name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki", "tier": "marque", "sale_only": true, "gender_hint": null },
     { "name": "Skechers", "domain": "skechers.ma", "platform": "woocommerce", "tier": "marque", "gender_hint": null, "category_hint": "chaussures" },
+    { "name": "Decathlon", "domain": "www.decathlon.ma", "platform": "decathlon", "tier": "marque", "sale_only": true, "skip_other": true, "max_pages": 60, "gender_hint": null },
 
     { "name": "Maison de mode", "domain": "maisondemode.ma", "tier": "boutique", "gender_hint": null },
     { "name": "Casquetta", "domain": "casquetta.ma", "tier": "boutique", "gender_hint": "homme", "category_hint": "accessoires" },

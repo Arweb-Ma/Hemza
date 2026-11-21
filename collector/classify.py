@@ -16,7 +16,7 @@ CATEGORY_RULES = [
     ("traditionnel", r"caftan|kaftan|takchita|djellaba|jellaba|gandoura|abaya|قفطان|تكشيطة|جلابة|عباية"),
     ("robes",      r"\brobe|dress|فستان|كسوة"),
     ("jeans",      r"\bjean|denim"),
-    ("pantalons",  r"pantalon|trouser|chino|jogger|jogging|\bshorts?\b|bermuda"),
+    ("pantalons",  r"pantalon|trouser|chino|jogger|jogging|\bshorts?\b|bermuda|legging|collant"),
     ("vestes",     r"veste|blouson|manteau|doudoune|parka|blazer|jacket|coat"),
     ("pulls",      r"\bpull|sweat|hoodie|cardigan|gilet"),
     ("t-shirts",   r"t-?shirt|tee\b|polo|debardeur|top\b"),
