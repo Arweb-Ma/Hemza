@@ -7,7 +7,7 @@
 - `collector/post_deals.py` — posts top deals to a Telegram channel; `--review` prints them for manual approval.
 - `collector/run.py` — one full cycle for a scheduler: collect, then post new verified deals, then (optionally) ask the site to rebuild. Each step runs only if its settings are present.
 - `.github/workflows/collect.yml` — collects the brands every two hours and the small shops once a day (`run.py --tier …`), then starts a site rebuild. Needs the `SUPABASE_SERVICE_KEY` repository secret (plus `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHANNEL` to post).
-- `.github/workflows/deploy.yml` — rebuilds and deploys the site every two hours, on changes to `web/`, or on demand. Needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets; without them it only builds.
+- `.github/workflows/deploy.yml` — rebuilds and deploys the site after every collection (started by `collect.yml`), on changes to `web/`, or on demand. Needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets; without them it only builds.
 - `web/` — the website (Astro + TypeScript, static, deployed to Cloudflare). See `web/README.md`.
 
 ## Go-live

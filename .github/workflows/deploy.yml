@@ -1,10 +1,8 @@
 name: Deploy site
 
 # The site is static: it shows the deals that existed when it was last built.
-# Rebuilding every two hours keeps it in step with the collector.
+# The "Collect prices" workflow starts a rebuild after every collection.
 on:
-  schedule:
-    - cron: '20 */2 * * *'
   push:
     branches: [main]
     paths: ['web/**', '.github/workflows/deploy.yml']
