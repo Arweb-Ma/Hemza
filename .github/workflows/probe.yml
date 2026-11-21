@@ -12,14 +12,18 @@ jobs:
         with:
           python-version: '3.13'
       - run: pip install -r collector/requirements.txt
-      - run: python collector/collect.py --dry-run --max-minutes 25 --only www.lcwaikiki.ma
       - run: |
           python - <<'PY'
-          import sys; sys.path.insert(0, "collector")
+          import sys, json, requests; sys.path.insert(0, "collector")
           import platforms
-          s = {"name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki"}
-          st, items, cur = platforms.fetch(s, None)
-          print(st, len(items), "targets:", cur and cur["targets"])
-          for i in [x for x in items if x["_compare_at"]][:6]:
-              print(i["title"], i["_price"], i["_compare_at"], i["gender"], i["category"], i["product_url"], i["image_url"])
+          t = requests.get("https://www.lcwaikiki.ma/fr/mvc/women-sales", headers={"User-Agent": platforms.UA}, timeout=40).text
+          m = platforms.lcw_model(t)
+          items = m["CatalogList"]["Items"]
+          print("PageInfo", m.get("PageInfo"))
+          keys = ["ProductDescription","PriceValue","DiscountedPriceValue","Price","DiscountedPrice","OldPrice","MinOldPrice","MinCurrentPrice","MaxCurrentPrice","LowestPriceInLastMonth","Discounted","CurrentPricesAreDiscounted","DiscountRatio","AnchorPrice"]
+          for p in items[:4]:
+              print(json.dumps({k: p.get(k) for k in keys}, ensure_ascii=False))
+              print("  badges:", json.dumps(p.get("CampaignBadges"), ensure_ascii=False)[:600])
+          diff = [p for p in items if p.get("OldPrice") != p.get("Price")]
+          print("OldPrice != Price:", len(diff), "/", len(items))
           PY
