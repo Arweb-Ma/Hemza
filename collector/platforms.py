@@ -240,7 +240,7 @@ MAGENTO_QUERY = (
 def magento(store, cursor, sample=False):
     page = cursor or 1
     limit = 3 if sample else MAGENTO_LIMIT
-    result = get_json(f"https://{store['domain']}/graphql?query={quote(MAGENTO_QUERY % (limit, page))}")
+    result = shop_json(store, f"https://{store['domain']}/graphql?query={quote(MAGENTO_QUERY % (limit, page))}")
     if result[0] != "ok":
         return result
     data = ((result[1] or {}).get("data") or {}).get("products") if isinstance(result[1], dict) else None
@@ -263,7 +263,7 @@ def magento(store, cursor, sample=False):
     if sample:
         return ("ok", items, None)
     pages = int((data.get("page_info") or {}).get("total_pages") or 1)
-    return ("ok", items, page + 1 if page < min(pages, MAX_PAGES) else None)
+    return ("ok", items, page + 1 if page < min(pages, int(store.get("max_pages") or MAX_PAGES)) else None)
 
 
 # ------------------------------------------------------------------ Zara

@@ -44,6 +44,7 @@ export const CATEGORY_LABEL = {
   chaussures: 'Chaussures',
   sacs: 'Sacs',
   accessoires: 'Accessoires',
+  parfums: 'Parfums',
   autres: 'Autres',
 } as const;
 

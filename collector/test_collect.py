@@ -411,6 +411,29 @@ class BrandReadersTest(unittest.TestCase):
         self.assertTrue(all(u.startswith("https://www.zara.com/ma/fr/") for u in fake.calls))
         self.assertEqual(len(fake.calls), 4)                                          # tree + 3 listings
 
+    def test_magento_through_the_browser_keeps_only_perfumes(self):
+        def product(i, name, category):
+            return {"id": i, "name": name, "url_key": f"p-{i}", "url_suffix": ".html", "stock_status": "IN_STOCK",
+                    "small_image": {"url": f"https://beautysuccess.co/media/{i}.jpg"}, "categories": [{"name": category}],
+                    "price_range": {"minimum_price": {"regular_price": {"value": 1000}, "final_price": {"value": 700}}}}
+        class MagentoBrowser:
+            urls = []
+            def get_json(self, store, url, headers=None):
+                self.urls.append(url)
+                items = [product(1, "Sauvage", "Parfum Homme"), product(2, "Rouge à lèvres mat", "Maquillage")]
+                return ("ok", {"data": {"products": {"items": items, "page_info": {"total_pages": 1}}}}, None)
+        platforms._browser = MagentoBrowser()
+        try:
+            store = {"name": "Beauty Success", "domain": "beautysuccess.co", "platform": "magento",
+                     "via": "browser", "skip_other": True}
+            status, items, cursor = platforms.fetch(store, None)
+        finally:
+            platforms._browser = None
+        self.assertEqual((status, cursor), ("ok", None))
+        self.assertEqual([(i["title"], i["gender"], i["category"], i["_price"], i["_compare_at"]) for i in items],
+                         [("Sauvage", "homme", "parfums", 700.0, 1000.0)])
+        self.assertTrue(MagentoBrowser.urls[0].startswith("https://beautysuccess.co/graphql?query="))
+
     def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
         black = zara_product(1, price=39900, old=None)
         red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}
@@ -567,6 +590,9 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(collect.classify("حذاء رجالي جلد", "", []), ("homme", "chaussures"))
         self.assertEqual(collect.classify("Shorts Homme Coupe Ample", "", []), ("homme", "pantalons"))
         self.assertEqual(collect.classify("Legging de sport taille haute", "", [])[1], "pantalons")
+        self.assertEqual(collect.classify("Sauvage Eau de Parfum 100ml", "", []), ("unisexe", "parfums"))
+        self.assertEqual(collect.classify("AMBER FUSION EDP 80 ML", "", [])[1], "parfums")
+        self.assertEqual(collect.classify("Eau de toilette pour homme", "", []), ("homme", "parfums"))
 
     def test_store_hints_fill_the_gaps(self):
         self.assertEqual(collect.classify("Uncloud Fermée Noir", "", [], "homme", "accessoires"), ("homme", "accessoires"))

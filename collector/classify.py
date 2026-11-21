@@ -11,6 +11,7 @@ GENDER_RULES = [
     ("homme",  r"\b(homme|hommes|men|man|masculin|gentleman)\b|رجال|رجالي"),
 ]
 CATEGORY_RULES = [
+    ("parfums",    r"parfum|eau de toilette|eau de cologne|cologne|fragrance|\bedp\b|\bedt\b|عطر"),
     ("chaussures", r"chaussure|basket|sneaker|sandale|mocassin|botte|bottine|escarpin|shoe|mule|loafer|حذاء|صندل|سبرديلة"),
     ("sacs",       r"\bsac|pochette|cabas|bag|cartable|valise|حقيبة|صاك"),
     ("traditionnel", r"caftan|kaftan|takchita|djellaba|jellaba|gandoura|abaya|قفطان|تكشيطة|جلابة|عباية"),
