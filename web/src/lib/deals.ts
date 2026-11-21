@@ -112,3 +112,29 @@ export function collapseModels(deals: readonly Deal[]): ListedDeal[] {
   }
   return [...groups.values()];
 }
+
+/**
+ * The cards a page has room for (`limit`), so that no brand disappears: each shop is first given an
+ * equal share of the places (its best cards), the places left go to the best remaining cards.
+ * Keeps the input order (best first). Without this, a brand whose promos are still "announced"
+ * (no price history yet) never reaches a long page dominated by big catalogs.
+ */
+export function pickForPage(listed: readonly ListedDeal[], limit: number): ListedDeal[] {
+  if (listed.length <= limit) return [...listed];
+  const stores = new Set(listed.map(({ deal }) => deal.storeName));
+  const share = Math.floor(limit / stores.size);
+  const taken = new Map<string, number>();
+  const chosen = new Set<ListedDeal>();
+  for (const card of listed) {
+    const count = taken.get(card.deal.storeName) ?? 0;
+    if (count < share) {
+      chosen.add(card);
+      taken.set(card.deal.storeName, count + 1);
+    }
+  }
+  for (const card of listed) {
+    if (chosen.size >= limit) break;
+    chosen.add(card);
+  }
+  return listed.filter((card) => chosen.has(card));
+}

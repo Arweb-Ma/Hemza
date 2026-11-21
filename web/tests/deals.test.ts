@@ -3,6 +3,7 @@ import {
   byScore,
   categoriesIn,
   collapseModels,
+  pickForPage,
   computeScore,
   dropDuplicates,
   filterDeals,
@@ -250,5 +251,34 @@ describe('reading the database', () => {
     const rows = await fetchPromoRows({ url: 'https://db.example', key: 'k' });
     expect(rows).toHaveLength(total);
     expect(urls).toHaveLength(3);
+  });
+});
+
+describe('cards on a long page', () => {
+  const cards = (store: string, n: number, score: number) =>
+    collapseModels(
+      Array.from({ length: n }, (_, i) =>
+        deal({ id: score * 1000 + i, storeName: store, title: `${store} article ${i}`, score }),
+      ),
+    );
+
+  it('keeps every brand on the page, best cards first', () => {
+    const listed = [...cards('Big', 50, 40), ...cards('Small', 10, 20)];
+    const page = pickForPage(listed, 20);
+    expect(page).toHaveLength(20);
+    expect(page.filter(({ deal: d }) => d.storeName === 'Small')).toHaveLength(10);
+    expect(page[0].deal.storeName).toBe('Big'); // order unchanged: best first
+  });
+
+  it('gives unused places to the best remaining cards', () => {
+    const listed = [...cards('Big', 50, 40), ...cards('Small', 3, 20)];
+    const page = pickForPage(listed, 20);
+    expect(page).toHaveLength(20);
+    expect(page.filter(({ deal: d }) => d.storeName === 'Big')).toHaveLength(17);
+  });
+
+  it('changes nothing when everything fits', () => {
+    const listed = cards('Big', 5, 40);
+    expect(pickForPage(listed, 20)).toEqual(listed);
   });
 });

@@ -1,7 +1,7 @@
 ---
 import DealCard from './DealCard.astro';
 import FilterBar from './FilterBar.astro';
-import { collapseModels } from '@/lib/deals';
+import { collapseModels, pickForPage } from '@/lib/deals';
 import { pluralize, timeAgo } from '@/lib/format';
 import type { Deal } from '@/lib/types';
 
@@ -15,8 +15,9 @@ interface Props {
 }
 const { deals, updatedAt, heading = 'Promos du moment', limit = 600 } = Astro.props;
 // Models a shop sells under the same name share one card; the best-ranked come first.
+// When there are more cards than room, every brand keeps its share of the page.
 const allListed = collapseModels(deals);
-const listed = allListed.slice(0, limit);
+const listed = pickForPage(allListed, limit);
 const hidden = allListed.length - listed.length;
 const maxPrice = Math.max(
   500,
@@ -52,8 +53,8 @@ const EAGER_IMAGES = 4;
   </div>
   {hidden > 0 && (
     <p class="more">
-      Les {listed.length} meilleures promos sont affichées sur {allListed.length}. Choisissez un
-      rayon ou une catégorie pour voir les autres.
+      {listed.length} promos sont affichées sur {allListed.length}, les meilleures de chaque marque.
+      Choisissez un rayon ou une catégorie pour voir les autres.
     </p>
   )}
   <p class="empty" data-deal-empty hidden={deals.length > 0}>
