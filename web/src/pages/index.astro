@@ -3,13 +3,14 @@ import DealListing from '@/components/DealListing.astro';
 import HowItWorks from '@/components/HowItWorks.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { getDealFeed } from '@/lib/data';
-import { collapseModels } from '@/lib/deals';
+import { collapseModels, filterDeals } from '@/lib/deals';
 
-const { deals, fakePromosFiltered, generatedAt } = await getDealFeed();
+const { deals: allDeals, fakePromosFiltered, generatedAt } = await getDealFeed();
+const deals = filterDeals(allDeals);
 const storeCount = new Set(deals.map((deal) => deal.storeName)).size;
 const stats = [
   { value: collapseModels(deals).length, label: 'promos actives' },
-  { value: storeCount, label: 'boutiques suivies' },
+  { value: storeCount, label: 'marques suivies' },
   ...(fakePromosFiltered === null
     ? []
     : [{ value: fakePromosFiltered, label: 'fausses promos écartées' }]),
@@ -23,9 +24,9 @@ const stats = [
         Les <em>vraies</em> promos mode au Maroc, vérifiées chaque jour.
       </h1>
       <p class="lead">
-        On suit le prix de chaque article dans le temps et on vous dit, pour chaque promo, si la
-        baisse est vérifiée ou seulement annoncée par la boutique. À vous de choisir ce que vous
-        voulez voir.
+        On suit le prix de chaque article des grandes marques présentes au Maroc et on vous dit,
+        pour chaque promo, si la baisse est vérifiée ou seulement annoncée par la marque. À vous de
+        choisir ce que vous voulez voir.
       </p>
       <dl class="stats">
         {stats.map(({ value, label }) => (

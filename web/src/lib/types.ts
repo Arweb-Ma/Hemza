@@ -2,11 +2,15 @@ import type { Category } from '@/config/site';
 
 export type Gender = 'femme' | 'homme' | 'enfant' | 'unisexe';
 
+/** `marque`: big brands, on the main pages. `boutique`: small shops, in their own section. */
+export type Tier = 'marque' | 'boutique';
+
 /** A verified price drop, ready to render. Prices are in Moroccan dirhams (MAD). */
 export interface Deal {
   id: number;
   title: string;
   storeName: string;
+  tier: Tier;
   gender: Gender;
   category: Category;
   /** Current price. */

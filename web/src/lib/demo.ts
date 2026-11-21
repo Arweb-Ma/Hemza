@@ -116,6 +116,7 @@ export function buildDemoFeed(now: Date = new Date(), seed = 42): DemoFeed {
           id: dealId,
           title: variant ? `${title} — édition ${EDITIONS[variant % EDITIONS.length]}` : title,
           storeName,
+          tier: 'marque',
           gender,
           category,
           price,

@@ -19,6 +19,7 @@ const deal = (overrides: Partial<Deal>): Deal => ({
   id: 1,
   title: 'Veste',
   storeName: 'Test',
+  tier: 'marque',
   gender: 'homme',
   category: 'vestes',
   price: 700,
@@ -69,6 +70,11 @@ describe('sections and categories', () => {
     expect(filterDeals(deals, { section: 'enfant', category: 'vestes' }).map((d) => d.id)).toEqual([
       4,
     ]);
+  });
+  it('lists big brands by default and small shops only when asked', () => {
+    const mixed = [deal({ id: 1 }), deal({ id: 2, tier: 'boutique' })];
+    expect(filterDeals(mixed).map((d) => d.id)).toEqual([1]);
+    expect(filterDeals(mixed, { tier: 'boutique' }).map((d) => d.id)).toEqual([2]);
   });
   it('returns present categories in display order', () => {
     expect(categoriesIn(deals)).toEqual(['robes', 'pulls', 'vestes']);
@@ -121,6 +127,7 @@ describe('database rows', () => {
     claimed_disc_pct: 53,
     saved_mad: 600,
     store_promo_share: '0.72',
+    store_tier: 'marque',
     score: 86,
     lowest_90d: true,
     sizes: ['M'],
@@ -132,6 +139,8 @@ describe('database rows', () => {
   it('uses our own median once there is enough history', () => {
     const parsed = toDeal(row, [1300, 1300, 700])!;
     expect(parsed).toMatchObject({ price: 700, refPrice: 1300, discountPct: 46, savedMad: 600 });
+    expect(parsed.tier).toBe('marque');
+    expect(toDeal({ ...row, store_tier: null }, [])!.tier).toBe('boutique');
     expect(parsed.verified).toBe(true);
     expect(parsed.alwaysOnSale).toBe(true);
     expect(parsed.productUrl).toBe('https://example.ma/products/veste?utm_source=hemza');

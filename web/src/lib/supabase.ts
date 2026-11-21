@@ -17,6 +17,7 @@ interface DealRow {
   claimed_disc_pct: number | null;
   saved_mad: number | null;
   store_promo_share: number | string | null;
+  store_tier: string | null;
   score: number | null;
   lowest_90d: boolean | null;
   sizes: string[] | null;
@@ -87,6 +88,7 @@ export function toDeal(row: DealRow, history: number[]): Deal | null {
     id: row.id,
     title: row.title,
     storeName: row.store_name,
+    tier: row.store_tier === 'marque' ? 'marque' : 'boutique',
     gender: row.gender ?? 'unisexe',
     category: row.category && isCategory(row.category) ? row.category : 'autres',
     price,

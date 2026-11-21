@@ -1,5 +1,5 @@
 import { CATEGORIES, type Category, type Section } from '@/config/site';
-import type { Deal } from './types';
+import type { Deal, Tier } from './types';
 
 /** Mirrors the `score` column of the `deals` view in db/schema.sql. */
 export function computeScore(discountPct: number, lowest90d: boolean): number {
@@ -16,12 +16,20 @@ export function inSection(deal: Deal, section: Section): boolean {
   return deal.gender === 'unisexe' && section !== 'enfant';
 }
 
+/** Listings show big brands unless asked for the small shops (`tier: 'boutique'`). */
 export function filterDeals(
   deals: readonly Deal[],
-  { section, category }: { section?: Section; category?: Category } = {},
+  {
+    section,
+    category,
+    tier = 'marque',
+  }: { section?: Section; category?: Category; tier?: Tier } = {},
 ): Deal[] {
   return deals.filter(
-    (deal) => (!section || inSection(deal, section)) && (!category || deal.category === category),
+    (deal) =>
+      deal.tier === tier &&
+      (!section || inSection(deal, section)) &&
+      (!category || deal.category === category),
   );
 }
 
