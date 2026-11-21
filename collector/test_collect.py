@@ -484,6 +484,22 @@ class DecathlonTest(unittest.TestCase):
         self.assertEqual((items[0]["_price"], items[0]["_compare_at"]), (700.0, 1300.0))
         self.assertEqual({kind for kind, _ in fake.calls}, {"json"})
 
+    def test_json_with_text_prices(self):
+        product = {"id": 7, "name": "Doudoune homme", "canonical_url": "https://www.decathlon.ma/p/7-1-d.html",
+                   "price": "799,00 MAD", "regular_price": "1 299,00 MAD"}
+        _, items, _ = self.read_all(FakeBrowser(json_pages=[[product]]))
+        self.assertEqual([(i["external_id"], i["_price"], i["_compare_at"]) for i in items], [("7", 799.0, 1299.0)])
+
+    def test_unusable_json_falls_back_to_the_page(self):
+        fake = FakeBrowser(json_pages=[[{"something": "else"}]], cards={1: [card(1)]})
+        _, items, _ = self.read_all(fake)
+        self.assertEqual([i["external_id"] for i in items], ["1"])
+        self.assertEqual([kind for kind, _ in fake.calls], ["json", "page"])
+
+    def test_money_text(self):
+        self.assertEqual([platforms.money_text(t) for t in ("1 299,00 MAD", "1.299,00 DH", "799 MAD", "12.5", None, "gratuit")],
+                         [1299.0, 1299.0, 799.0, 12.5, None, None])
+
     def test_a_refusal_is_reported_as_throttled(self):
         result, items, _ = self.read_all(FakeBrowser(refuse=True))
         self.assertEqual((result[0], items), ("throttled", []))

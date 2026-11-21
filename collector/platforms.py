@@ -15,7 +15,7 @@ Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma cat
 LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
 Decathlon    the "Promotions" listing, in a browser   PrestaShop JSON if offered, else the rendered cards
 """
-import html, json, re
+import html, json, os, re, tempfile
 from urllib.parse import quote
 import requests
 
@@ -185,19 +185,44 @@ def prestashop(store, cursor, sample=False):
     return ("ok", items, (index + 1, 1) if index + 1 < len(paths) else None)
 
 
+def money_text(text):
+    """'1 299,00 MAD' / '1.299,00 DH' / '799 MAD' → 1299.0 / 1299.0 / 799.0 (None when not a price)."""
+    if isinstance(text, (int, float)):
+        return float(text)
+    match = re.search(r"\d[\d\s\u202f\u00a0.,]*", str(text or ""))
+    if not match:
+        return None
+    value = re.sub(r"[\s\u202f\u00a0]", "", match.group(0)).rstrip(".,")
+    value = value.replace(".", "").replace(",", ".") if re.search(r",\d{1,2}$", value) else value.replace(",", "")
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def presta_items(store, products):
     """PrestaShop listing JSON → product records (shared by the plain and browser readers)."""
     items = []
     for p in products:
-        price, product_id = p.get("price_amount"), p.get("id_product")
-        product_url = p.get("url") or p.get("link")
+        if not isinstance(p, dict):
+            continue
+        # Themes differ: amounts as numbers (price_amount) or only as text ("1 299,00 MAD").
+        price = p.get("price_amount")
+        if price is None:
+            price = money_text(p.get("price"))
+        regular = p.get("regular_price_amount")
+        if regular is None:
+            regular = money_text(p.get("regular_price"))
+        product_id = p.get("id_product") or p.get("id")
+        product_url = p.get("url") or p.get("link") or p.get("canonical_url")
         if price is None or product_id is None or not product_url:
             continue
-        cover = (p.get("cover") or {})
+        cover = (p.get("cover") or {}) if isinstance(p.get("cover"), dict) else {}
         image = ((cover.get("bySize") or {}).get("home_default") or cover.get("large") or {}).get("url")
+        discounted = p.get("has_discount", regular is not None and float(regular) > float(price))
         items.append(item(
             store, external_id=product_id, handle=p.get("link_rewrite"), title=p.get("name"), url=product_url,
-            price=price, compare_at=p.get("regular_price_amount") if p.get("has_discount") else None,
+            price=price, compare_at=regular if discounted else None,
             in_stock=p.get("availability") != "unavailable", image=image, brand=p.get("manufacturer_name"),
             text=[p.get("category_name")],
         ))
@@ -513,6 +538,16 @@ def decathlon_items(store, products, seen):
     return items
 
 
+def debug_dump(store, name, data):
+    """HEMZA_DEBUG=1: keep what the shop sent, to see why products were (not) read."""
+    if os.environ.get("HEMZA_DEBUG") not in ("1", "true", "yes"):
+        return
+    path = os.path.join(tempfile.gettempdir(), f"hemza-{store['domain']}-{name}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1, default=str)
+    print(f"  [debug] saved {path}", flush=True)
+
+
 def decathlon(store, cursor, sample=False):
     reader = browser_reader()
     if cursor is None:
@@ -531,20 +566,25 @@ def decathlon(store, cursor, sample=False):
         if result[0] == "throttled":
             return result
         data = result[1] if result[0] == "ok" else None
-        if isinstance(data, dict) and isinstance(data.get("products"), list) and data["products"]:
+        debug_dump(store, f"json-page{page}", data if data is not None else result)
+        parsed = presta_items(store, data["products"]) if (
+            isinstance(data, dict) and isinstance(data.get("products"), list)) else []
+        if parsed:
             cursor = {**cursor, "mode": "json"}
-            fresh = [p for p in presta_items(store, data["products"]) if p["external_id"] not in seen]
-            seen.update(p["external_id"] for p in fresh)
-            items = fresh
+            items = [p for p in parsed if p["external_id"] not in seen]
+            seen.update(p["external_id"] for p in items)
             pages = int((data.get("pagination") or {}).get("pages_count") or 0)
+        elif cursor["mode"] == "json":
+            items = []                                  # past the last page
         else:
-            cursor = {**cursor, "mode": "page"}
+            cursor = {**cursor, "mode": "page"}         # no usable data: read the page itself
 
     if items is None:
         result = reader.render(store, url, DECATHLON_JS, wait_for='a[href*="/p/"]')
         if result[0] != "ok":
             return result
         found = result[1] or {}
+        debug_dump(store, f"cards-page{page}", found)
         if not found.get("products") and page == 1:
             return ("error", f"no product cards found on {url} (page layout changed?)")
         items = decathlon_items(store, found.get("products") or [], seen)
