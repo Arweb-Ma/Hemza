@@ -335,26 +335,33 @@ def zara(store, cursor, sample=False):
         if result[0] == "error" and index + 1 < len(targets) and not sample:
             return ("ok", [], {**cursor, "index": index + 1})       # one broken listing is not fatal
         return result
-    items = []
+    # Zara lists each colour of a product as its own card. We keep one product per product page
+    # (seoProductId, so its id stays the same whatever colour comes first): its cheapest colour.
+    best = {}
     for group in (result[1] or {}).get("productGroups") or []:
         for element in group.get("elements") or []:
             for p in element.get("commercialComponents") or []:
                 seo, price = p.get("seo") or {}, p.get("price")
-                if price is None or not seo.get("keyword") or p.get("id") in seen:
+                page_id = str(seo.get("seoProductId") or p.get("id"))
+                if price is None or not seo.get("keyword") or page_id in seen:
                     continue
                 if (p.get("familyName") or "").upper() in ZARA_SKIP_FAMILIES:
                     continue
-                seen.add(p.get("id"))
-                old = p.get("oldPrice")
-                items.append(item(
-                    store, external_id=p["id"], handle=seo.get("keyword"), title=p.get("name"),
-                    url=f"{ZARA_BASE}/{seo['keyword']}-p{seo.get('seoProductId')}.html?v1={seo.get('discernProductId', p['id'])}",
-                    price=price / 100, compare_at=old / 100 if old else None,
-                    in_stock=p.get("availability") not in ("out_of_stock", "coming_soon"),
-                    image=zara_image(p), brand="Zara",
-                    gender=ZARA_SECTIONS.get(p.get("sectionName")),
-                    text=[p.get("familyName"), p.get("subfamilyName")],
-                ))
+                if page_id not in best or price < best[page_id]["price"]:
+                    best[page_id] = p
+    items = []
+    for page_id, p in best.items():
+        seen.add(page_id)
+        seo, price, old = p.get("seo") or {}, p.get("price"), p.get("oldPrice")
+        items.append(item(
+            store, external_id=page_id, handle=seo.get("keyword"), title=p.get("name"),
+            url=f"{ZARA_BASE}/{seo['keyword']}-p{seo.get('seoProductId')}.html?v1={seo.get('discernProductId', p['id'])}",
+            price=price / 100, compare_at=old / 100 if old else None,
+            in_stock=p.get("availability") not in ("out_of_stock", "coming_soon"),
+            image=zara_image(p), brand="Zara",
+            gender=ZARA_SECTIONS.get(p.get("sectionName")),
+            text=[p.get("familyName"), p.get("subfamilyName")],
+        ))
     if sample:
         return ("ok", items[:3], None)
     return ("ok", items, {**cursor, "index": index + 1} if index + 1 < len(targets) else None)

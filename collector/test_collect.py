@@ -407,9 +407,24 @@ class BrandReadersTest(unittest.TestCase):
                     break
         finally:
             platforms._browser = None
-        self.assertEqual([i["external_id"] for i in items], ["1", "2"])
+        self.assertEqual([i["external_id"] for i in items], ["01", "02"])
         self.assertTrue(all(u.startswith("https://www.zara.com/ma/fr/") for u in fake.calls))
         self.assertEqual(len(fake.calls), 4)                                          # tree + 3 listings
+
+    def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
+        black = zara_product(1, price=39900, old=None)
+        red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}
+        zara = {"tree": ZARA_TREE, "listings": {121: [black, red], 111: [black], 21: []}}
+        store = {"name": "Zara", "domain": "zara.com", "platform": "zara"}
+        world, cursor, items = World(zara=zara), None, []
+        while True:
+            status, page, cursor = read_one(world, store, cursor)
+            items += page
+            if cursor is None:
+                break
+        self.assertEqual(len(items), 1)
+        self.assertEqual((items[0]["external_id"], items[0]["_price"], items[0]["_compare_at"]), ("01", 199.0, 399.0))
+        self.assertTrue(items[0]["product_url"].endswith("?v1=2"))
 
     def test_zara_targets_price_drops_first_then_listings_and_skips_beauty(self):
         self.assertEqual(platforms.zara_targets(ZARA_TREE), [121, 111, 21])
@@ -428,7 +443,7 @@ class BrandReadersTest(unittest.TestCase):
             items += page
             if cursor is None:
                 break
-        self.assertEqual([i["external_id"] for i in items], ["1", "2", "4"])          # no repeat, no perfume
+        self.assertEqual([i["external_id"] for i in items], ["01", "02", "04"])       # no repeat, no perfume
         drop = items[0]
         self.assertEqual((drop["_price"], drop["_compare_at"]), (299.0, 499.0))
         self.assertEqual(drop["product_url"], "https://www.zara.com/ma/fr/robe-1-p01.html?v1=1")
