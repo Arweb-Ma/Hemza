@@ -41,7 +41,7 @@ def caption(d):
         lines.append("ℹ️ Remise annoncée par la boutique, vérification en cours")
     if d.get("lowest_90d"):
         lines.append("📉 Prix le plus bas depuis 90 jours")
-    lines += [f"🏬 {d['store_name']}", f"👉 {link(d)}", "", f"#hemza #soldes #maroc #mode{d['gender']}"]
+    lines += [f"🏬 {d['store_name']}", f"👉 {link(d)}", "", f"#reeklam #soldes #maroc #mode{d['gender']}"]
     return "\n".join(lines)
 
 def send(token, channel, deal, text):

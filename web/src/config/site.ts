@@ -1,11 +1,11 @@
 import type { Gender } from '@/lib/types';
 
 export const SITE = {
-  name: 'Hemza.ma',
+  name: 'Reeklam',
   tagline: 'vraies promos mode',
-  title: 'Hemza.ma — Les vraies promos mode au Maroc',
+  title: 'Reeklam — Les vraies promos mode au Maroc',
   description:
-    'Hemza.ma repère chaque jour les vraies baisses de prix sur la mode femme, homme et enfant au Maroc. Historique des prix, fausses promos filtrées.',
+    'Reeklam repère chaque jour les vraies baisses de prix sur la mode femme, homme et enfant au Maroc. Historique des prix, fausses promos filtrées.',
   locale: 'fr-MA',
   /** Set once the channel exists, e.g. 'https://t.me/your_channel'. The button is hidden while null. */
   telegramUrl: null as string | null,
