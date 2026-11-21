@@ -140,7 +140,7 @@ def _screenshot(page, url):
         return ""
 
 
-def render(store, url, script, wait_for=None):
+def render(store, url, script, wait_for=None, arg=None):
     """Opens `url` in the shop's tab and runs `script` (a JS function) on it.
     Returns ("ok", value) or ("throttled", None, detail) when refused, or ("error", detail)."""
     page, problem = _page(store)
@@ -157,7 +157,8 @@ def render(store, url, script, wait_for=None):
     # Lazy-loaded cards and images appear as the visitor scrolls.
     try:
         page.evaluate("""async () => {
-            for (let y = 0; y < document.body.scrollHeight; y += 700) {
+            // re-measured each step, so grids that load more while scrolling are read too (capped)
+            for (let y = 0, steps = 0; y < document.body.scrollHeight && steps < 300; y += 700, steps++) {
                 window.scrollTo(0, y); await new Promise(r => setTimeout(r, 120));
             }
             window.scrollTo(0, 0);
@@ -165,7 +166,7 @@ def render(store, url, script, wait_for=None):
     except Exception:
         pass
     try:
-        return ("ok", page.evaluate(script))
+        return ("ok", page.evaluate(script, arg))
     except Exception as e:
         return ("error", f"could not read {url}: {str(e).splitlines()[0][:160]}")
 

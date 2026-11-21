@@ -465,6 +465,45 @@ class BrandReadersTest(unittest.TestCase):
         self.assertEqual(PageBrowser.urls, ["https://beautysuccess.co/parfum.html", "https://beautysuccess.co/parfum.html?p=2",
                                             "https://beautysuccess.co/parfum.html?p=3"])
 
+    def test_browser_cards_discovers_sale_pages_and_pages_until_nothing_new(self):
+        def card(path, now=199.0, old=299.0):
+            return {"id": path, "url": "https://www.defacto.com" + path, "title": "Jean wide leg femme",
+                    "image": None, "brand": None, "now": [now], "old": [old], "text": ""}
+        listings = {("/fr-ma/woman-discount-product-ma", 1): [card("/fr-ma/jean-1"), card("/fr-ma/woman-discount-product-ma")],
+                    ("/fr-ma/woman-discount-product-ma", 2): [card("/fr-ma/jean-2")],
+                    ("/fr-ma/woman-discount-product-ma", 3): [card("/fr-ma/jean-2")],          # page ignored: same cards
+                    ("/fr-ma/man-discount-product-ma", 1): [card("/fr-ma/pull-1", 99.0, 199.0)],
+                    ("/fr-ma/man-discount-product-ma", 2): []}
+        class CardsBrowser:
+            urls = []
+            def render(self, store, url, script, wait_for=None, arg=None):
+                self.urls.append(url)
+                if script is platforms.SALE_LINK_JS:
+                    return ("ok", ["/fr-ma/man-discount-product-ma", "/fr-ma/aide/promo", "/fr-ma/woman-discount-product-ma"])
+                path, _, query = url.removeprefix("https://www.defacto.com").partition("?")
+                page = int(query.split("=")[1]) if query else 1
+                return ("ok", {"products": listings[(path, page)], "pages": 0})
+            def snapshot(self, store, name):
+                return ""
+        platforms._browser = CardsBrowser()
+        try:
+            store = {"name": "DeFacto", "domain": "www.defacto.com", "platform": "browser_cards", "prefix": "/fr-ma/",
+                     "paths": ["woman-discount-product-ma"], "discover": True, "page_param": "page"}
+            cursor, items = None, []
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                self.assertEqual(status, "ok")
+                items += page
+                if cursor is None:
+                    break
+        finally:
+            platforms._browser = None
+        self.assertEqual([i["external_id"] for i in items], ["/fr-ma/jean-1", "/fr-ma/jean-2", "/fr-ma/pull-1"])
+        self.assertEqual((items[0]["brand"], items[0]["gender"], items[0]["category"]), ("DeFacto", "femme", "jeans"))
+        self.assertNotIn("https://www.defacto.com/fr-ma/aide/promo", CardsBrowser.urls)       # help pages skipped
+        self.assertIn("https://www.defacto.com/fr-ma/woman-discount-product-ma?page=3", CardsBrowser.urls)
+        self.assertNotIn("https://www.defacto.com/fr-ma/woman-discount-product-ma?page=4", CardsBrowser.urls)
+
     def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
         black = zara_product(1, price=39900, old=None)
         red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}

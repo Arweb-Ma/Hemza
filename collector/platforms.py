@@ -15,6 +15,7 @@ Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma cat
 LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
 Decathlon    the "Promotions" listing, in a browser   PrestaShop JSON if offered, else the rendered cards
 Magento page category pages (?p=N), in a browser     standard Magento price attributes on each card
+Any shop     sale pages (given or found on the home page), in a browser: product links with a price
 """
 import html, json, os, re, tempfile
 from urllib.parse import quote
@@ -534,6 +535,11 @@ def browser_reader():
     return _browser
 
 
+def shout_to_title(brand):
+    """'QUECHUA' → 'Quechua'; 'DeFacto' stays 'DeFacto'."""
+    return brand.title() if brand and brand.isupper() else brand
+
+
 def decathlon_items(store, products, seen, default_brand="Decathlon"):
     """Rendered cards → product records. Lowest current price is the price; the struck one the old price."""
     items = []
@@ -551,7 +557,7 @@ def decathlon_items(store, products, seen, default_brand="Decathlon"):
         items.append(item(
             store, external_id=p["id"], handle=handle, title=p.get("title"),
             url=p["url"], price=price, compare_at=was, in_stock=not DECATHLON_GONE.search(p.get("text") or ""),
-            image=p.get("image"), brand=(p.get("brand") or default_brand).title(), text=[p.get("text")],
+            image=p.get("image"), brand=shout_to_title(p.get("brand") or default_brand), text=[p.get("text")],
         ))
     return items
 
@@ -720,9 +726,73 @@ def magento_page_next(store, cursor, items, found, sample):
     return ("ok", items, following)
 
 
+# ------------------------------------------------------------------ Any shop, through a browser
+# For shops whose pages are built in the browser and whose markup we cannot see in advance (DeFacto,
+# Lefties). Listing pages: `paths` from stores.json, plus — with `discover` — the links on the home
+# page named soldes / promo / sale / discount. On each page (scrolled, so lazy grids load) every
+# link of the shop with a MAD/DH price next to it is a product card (the Decathlon card reader with
+# a generic link pattern). `page_param`: also read ?<param>=2, 3… until no new product appears.
+SALE_LINK_JS = r"""([prefix, words]) => {
+  const re = new RegExp(words, 'i'), out = [];
+  for (const a of document.querySelectorAll('a[href]')) {
+    let url;
+    try { url = new URL(a.href, location.href); } catch (e) { continue; }
+    if (url.host !== location.host || !url.pathname.startsWith(prefix)) continue;
+    const label = ((a.innerText || '') + ' ' + (a.getAttribute('aria-label') || '') + ' ' + url.pathname).trim();
+    if (re.test(label)) out.push(url.pathname);
+  }
+  return [...new Set(out)];
+}"""
+SALE_WORDS = r"solde|promo|sale\b|discount|r[ée]duction|baisse de prix|prix bas|outlet|offres?\b|black.?friday|tanzilat|تخفيض"
+SALE_EXCLUDE = re.compile(r"/(help|aide|faq|conditions|legal|cgv|store|magasin|account|cart|panier)", re.I)
+
+
+def browser_cards(store, cursor, sample=False):
+    reader = browser_reader()
+    prefix = store.get("prefix") or "/"
+    if cursor is None:
+        targets = list(store.get("paths") or [])
+        if store.get("discover"):
+            home = store.get("home_url") or f"https://{store['domain']}{prefix}"
+            result = reader.render(store, home, SALE_LINK_JS, wait_for="a[href]", arg=[prefix, SALE_WORDS])
+            if result[0] == "throttled":
+                return result
+            found = result[1] if result[0] == "ok" else []
+            debug_dump(store, "sale-links", found)
+            targets += [p for p in (found or []) if not SALE_EXCLUDE.search(p)][:int(store.get("max_targets") or 8)]
+        targets = list(dict.fromkeys(t if t.startswith("/") else prefix + t for t in targets))
+        if not targets:
+            return ("error", f"no sale listing found on the home page{reader.snapshot(store, 'no-sale-links')}")
+        cursor = {"targets": targets, "index": 0, "page": 1, "seen": set(), "found_any": False}
+    targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
+    url = f"https://{store['domain']}{targets[index]}"
+    if page > 1:
+        url += ("&" if "?" in url else "?") + f"{store['page_param']}={page}"
+    host = re.escape(store["domain"].removeprefix("www."))
+    pattern = store.get("product_pattern") or (
+        r"^(?:https?://(?:www\.)?" + host + r")?(" + re.escape(prefix) + r"[^?#]*[^/?#])")
+    result = reader.render(store, url, DECATHLON_JS, wait_for="a[href]", arg=pattern)
+    if result[0] != "ok":
+        return result
+    cards = result[1] or {}
+    debug_dump(store, f"cards-{index}-{page}", cards)
+    listing_paths = set(targets)
+    products = [p for p in cards.get("products") or [] if p["id"] not in listing_paths]
+    items = decathlon_items(store, products, seen, default_brand=store.get("name"))
+    cursor = {**cursor, "found_any": cursor["found_any"] or bool(items)}
+    following = {**cursor, "index": index + 1, "page": 1} if index + 1 < len(targets) else None
+    if not following and not cursor["found_any"]:
+        return ("error", f"no product cards found on {url}{reader.snapshot(store, 'no-cards')}")
+    if sample:
+        return ("ok", items[:3], None)
+    if items and store.get("page_param") and page < int(store.get("max_pages") or MAX_PAGES):
+        return ("ok", items, {**cursor, "page": page + 1})
+    return ("ok", items, following)
+
+
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
             "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki, "decathlon": decathlon,
-            "magento_page": magento_page}
+            "magento_page": magento_page, "browser_cards": browser_cards}
 # Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
 GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
