@@ -1,0 +1,25 @@
+name: Probe (temporary)
+on:
+  push:
+    branches: [probe-lcw]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r collector/requirements.txt
+      - run: python collector/collect.py --dry-run --max-minutes 25 --only www.lcwaikiki.ma
+      - run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, "collector")
+          import platforms
+          s = {"name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki"}
+          st, items, cur = platforms.fetch(s, None)
+          print(st, len(items), "targets:", cur and cur["targets"])
+          for i in [x for x in items if x["_compare_at"]][:6]:
+              print(i["title"], i["_price"], i["_compare_at"], i["gender"], i["category"], i["product_url"], i["image_url"])
+          PY
