@@ -434,6 +434,37 @@ class BrandReadersTest(unittest.TestCase):
                          [("Sauvage", "homme", "parfums", 700.0, 1000.0)])
         self.assertTrue(MagentoBrowser.urls[0].startswith("https://beautysuccess.co/graphql?query="))
 
+    def test_magento_pages_through_the_browser(self):
+        def card(i, now, old=None, title="HEROD"):
+            return {"id": str(i), "url": f"https://beautysuccess.co/p{i}.html", "title": title, "image": None,
+                    "brand": None, "now": [now], "old": [old] if old else [], "in_stock": True}
+        pages = {1: [card(1, 2032, 2540), card(2, 1540)], 2: [card(3, 990, 1290, "Libre Eau de Parfum Femme")],
+                 3: [card(3, 990, 1290)]}
+        class PageBrowser:
+            urls = []
+            def render(self, store, url, script, wait_for=None):
+                self.urls.append(url)
+                page = int((re.search(r"[?&]p=(\d+)", url) or [0, 1])[1])
+                return ("ok", {"products": pages[page], "pages": 3, "total": 0, "per_page": 2})
+        platforms._browser = PageBrowser()
+        try:
+            store = {"name": "Beauty Success", "domain": "beautysuccess.co", "platform": "magento_page",
+                     "paths": ["parfum.html"], "skip_other": True, "category_hint": "parfums"}
+            cursor, items = None, []
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                self.assertEqual(status, "ok")
+                items += page
+                if cursor is None:
+                    break
+        finally:
+            platforms._browser = None
+        self.assertEqual([(i["external_id"], i["_price"], i["_compare_at"], i["category"]) for i in items],
+                         [("1", 2032.0, 2540.0, "parfums"), ("2", 1540.0, None, "parfums"), ("3", 990.0, 1290.0, "parfums")])
+        self.assertEqual(items[2]["gender"], "femme")
+        self.assertEqual(PageBrowser.urls, ["https://beautysuccess.co/parfum.html", "https://beautysuccess.co/parfum.html?p=2",
+                                            "https://beautysuccess.co/parfum.html?p=3"])
+
     def test_zara_keeps_one_product_per_page_its_cheapest_colour(self):
         black = zara_product(1, price=39900, old=None)
         red = {**zara_product(2, price=19900, old=39900), "seo": {**black["seo"], "discernProductId": 2}}

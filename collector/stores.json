@@ -9,7 +9,7 @@
     { "name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki", "tier": "marque", "sale_only": true, "gender_hint": null },
     { "name": "Skechers", "domain": "skechers.ma", "platform": "woocommerce", "tier": "marque", "gender_hint": null, "category_hint": "chaussures" },
     { "name": "Zara", "domain": "www.zara.com", "platform": "zara", "via": "browser", "home_url": "https://www.zara.com/ma/fr/", "tier": "marque", "gender_hint": null },
-    { "name": "Beauty Success", "domain": "beautysuccess.co", "platform": "magento", "via": "browser", "tier": "marque", "skip_other": true, "max_pages": 200, "gender_hint": null, "category_hint": null },
+    { "name": "Beauty Success", "domain": "beautysuccess.co", "platform": "magento_page", "paths": ["parfum.html"], "tier": "marque", "skip_other": true, "max_pages": 100, "gender_hint": null, "category_hint": "parfums" },
     { "name": "Decathlon", "domain": "www.decathlon.ma", "platform": "decathlon", "tier": "marque", "sale_only": true, "skip_other": true, "max_pages": 60, "gender_hint": null },
 
     { "name": "Maison de mode", "domain": "maisondemode.ma", "tier": "boutique", "gender_hint": null },

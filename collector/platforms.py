@@ -14,6 +14,7 @@ Magento      /graphql                            the public GraphQL catalog (Mar
 Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma category pages
 LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
 Decathlon    the "Promotions" listing, in a browser   PrestaShop JSON if offered, else the rendered cards
+Magento page category pages (?p=N), in a browser     standard Magento price attributes on each card
 """
 import html, json, os, re, tempfile
 from urllib.parse import quote
@@ -613,8 +614,95 @@ def decathlon(store, cursor, sample=False):
     return ("ok", items, following and {**following, "mode": cursor["mode"]})
 
 
+# ------------------------------------------------------------------ Magento pages (through a browser)
+# For Magento shops whose GraphQL API refuses visitors (Beauty Success): read the category pages
+# themselves, `?p=N` only (robots.txt allows it; product_list_limit and sorting are disallowed).
+# Magento writes prices in standard attributes: data-price-type="finalPrice" / "oldPrice" with
+# data-price-amount, and the product id in data-product-id.
+MAGENTO_PAGE_JS = r"""() => {
+  const cards = document.querySelectorAll('.product-item, li.item.product');
+  const products = [], seen = new Set();
+  const amount = (card, type) => [...card.querySelectorAll(`[data-price-type="${type}"]`)]
+    .map(e => parseFloat(e.getAttribute('data-price-amount'))).filter(v => v > 0);
+  for (const card of cards) {
+    const link = card.querySelector('a.product-item-link') || card.querySelector('a.product-item-photo, a[href$=".html"]');
+    if (!link) continue;
+    const idEl = card.querySelector('[data-product-id]');
+    const id = idEl ? idEl.getAttribute('data-product-id') : link.href;
+    if (seen.has(id)) continue;
+    let now = amount(card, 'finalPrice').concat(amount(card, 'minPrice'));
+    let old = amount(card, 'oldPrice');
+    if (!now.length) {                       // themes that drop the attributes: read the price texts
+      for (const e of card.querySelectorAll('.price')) {
+        const v = parseFloat((e.textContent || '').replace(/[^\d,.]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+        if (v > 0) (e.closest('.old-price') ? old : now).push(v);
+      }
+    }
+    if (!now.length) continue;
+    seen.add(id);
+    const img = card.querySelector('img.product-image-photo') || card.querySelector('img');
+    const src = img && (img.getAttribute('data-src') || img.currentSrc || img.getAttribute('src'));
+    const brand = card.querySelector('[class*="brand" i]');
+    products.push({
+      id, url: link.href.split(/[?#]/)[0], title: (link.innerText || link.title || '').trim() || (img && img.alt) || '',
+      image: src && !src.startsWith('data:') ? new URL(src, location.href).href : null,
+      brand: brand ? brand.innerText.trim() : null, now, old,
+      in_stock: !card.querySelector('.stock.unavailable, .out-of-stock'),
+    });
+  }
+  let pages = 0;
+  for (const l of document.querySelectorAll('a[href*="?p="]')) {
+    const m = l.href.match(/[?&]p=(\d+)/);
+    if (m) pages = Math.max(pages, +m[1]);
+  }
+  const total = (document.querySelector('#toolbar-amount, .toolbar-amount') || {}).textContent || '';
+  const count = (total.replace(/[\s  ]/g, '').match(/(\d+)articles?|sur(\d+)/i) || []).slice(1).find(Boolean);
+  return {products, pages, total: count ? +count : 0, per_page: cards.length};
+}"""
+
+
+def magento_page(store, cursor, sample=False):
+    reader = browser_reader()
+    if cursor is None:
+        cursor = {"targets": store.get("paths") or ["parfum.html"], "index": 0, "page": 1, "seen": set()}
+    targets, index, page, seen = cursor["targets"], cursor["index"], cursor["page"], cursor["seen"]
+    url = f"https://{store['domain']}/{targets[index].lstrip('/')}" + (f"?p={page}" if page > 1 else "")
+    result = reader.render(store, url, MAGENTO_PAGE_JS, wait_for=".product-item, li.item.product")
+    if result[0] != "ok":
+        return result
+    found = result[1] or {}
+    if not found.get("products") and page == 1:
+        return ("error", f"no product cards found on {url} (page layout changed?)")
+    section = targets[index].rsplit("/", 1)[-1].replace(".html", "").replace("-", " ")
+    items = []
+    for p in found.get("products") or []:
+        key = str(p["id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        price = min(p["now"])
+        was = max(p["old"]) if p.get("old") else None
+        items.append(item(
+            store, external_id=key, handle=p["url"].rsplit("/", 1)[-1].replace(".html", ""), title=p.get("title"),
+            url=p["url"], price=price, compare_at=was if was and was > price else None,
+            in_stock=p.get("in_stock", True), image=p.get("image"), brand=p.get("brand") or store.get("name"),
+            text=[section],                       # "parfum" → the Parfums category
+        ))
+    if sample:
+        return ("ok", items[:3], None)
+    pages = int(found.get("pages") or 0)
+    if found.get("total") and found.get("per_page"):
+        pages = max(pages, -(-int(found["total"]) // int(found["per_page"])))
+    limit = int(store.get("max_pages") or MAX_PAGES)
+    if items and page < limit and (page < pages if pages else True):
+        return ("ok", items, {**cursor, "page": page + 1})
+    following = {**cursor, "index": index + 1, "page": 1} if index + 1 < len(targets) else None
+    return ("ok", items, following)
+
+
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
-            "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki, "decathlon": decathlon}
+            "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki, "decathlon": decathlon,
+            "magento_page": magento_page}
 # Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
 GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
