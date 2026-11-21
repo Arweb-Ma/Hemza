@@ -1,26 +1,73 @@
 """
-Reads pages with a real (headless) Chromium, for shops that refuse plain HTTP clients.
+Reads pages with a real Chromium (hidden by default), for shops that refuse plain HTTP clients.
 
-Used only by stores marked `"via": "browser"` in stores.json (Decathlon.ma). The browser starts on the
+Used by the `decathlon` reader (Decathlon.ma). The browser starts on the
 first request and is shared by every such store for the whole run; it is closed when the run ends.
 
 What it does: opens the shop's home page once (so the shop's own scripts and cookies run as for any
 visitor), then loads listing pages like a visitor would, at the collector's slow pace.
-What it does NOT do: solve CAPTCHAs or use "stealth" tricks. If a shop shows a challenge page, the
+If the shop first shows a "checking your browser" page, its script is given time to run, as for any
+visitor. What it does NOT do: solve CAPTCHAs or use "stealth" tricks. If the check never clears, the
 store is reported as refused and skipped for this run.
 
 Needs: pip install -r collector/requirements-browser.txt && python -m playwright install --with-deps chromium
 (or set HEMZA_CHROME to an installed Chrome, e.g. "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
+
+Settings (environment variables, all optional — useful on a home PC):
+  HEMZA_CHROME   "chrome" = your installed Google Chrome; or the path of a chrome.exe
+  HEMZA_HEADED   1 = show the browser window instead of running it hidden
+  HEMZA_PROFILE  a folder where the browser keeps its cookies between runs (like a normal Chrome profile)
+When a shop refuses, a screenshot of what the browser saw is saved and its path printed.
+
+Needs: pip install -r collector/requirements-browser.txt && python -m playwright install --with-deps chromium
 """
-import atexit, json, os, re
+import atexit, json, os, re, sys, tempfile
 
 TIMEOUT_MS = 45_000
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-      "Chrome/131.0.0.0 Safari/537.36")
+CHALLENGE_WAIT_S = 30                   # time given to a shop's own "checking your browser" page
 CHALLENGE = re.compile(r"incapsula|_incap_|request unsuccessful|verify you are human|are you a robot|"
                        r"captcha|just a moment|attention required|access denied|checking your browser", re.I)
+OS_TOKEN = {"win32": "Windows NT 10.0; Win64; x64", "darwin": "Macintosh; Intel Mac OS X 10_15_7"}
 
 _state = {"playwright": None, "browser": None, "context": None, "pages": {}}
+
+
+def _settings():
+    chrome = os.environ.get("HEMZA_CHROME") or ""
+    launch = {"headless": os.environ.get("HEMZA_HEADED", "") not in ("1", "true", "yes")}
+    if chrome.lower() == "chrome":
+        launch["channel"] = "chrome"                        # the Google Chrome installed on this machine
+    elif chrome:
+        launch["executable_path"] = chrome
+    else:
+        launch["channel"] = "chromium"                      # Playwright's full Chromium, not the "headless shell"
+    return launch, os.environ.get("HEMZA_PROFILE") or None
+
+
+def _user_agent(version):
+    """What this same Chrome says when it runs in a window (hidden Chrome adds "Headless")."""
+    major = (version or "131").split(".")[0]
+    system = OS_TOKEN.get(sys.platform, "X11; Linux x86_64")
+    return f"Mozilla/5.0 ({system}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
+
+
+def _start():
+    from playwright.sync_api import sync_playwright
+    launch, profile = _settings()
+    pw = _state["playwright"] = sync_playwright().start()
+    options = {"locale": "fr-MA", "timezone_id": "Africa/Casablanca", "viewport": {"width": 1366, "height": 900}}
+    if profile:
+        if launch["headless"]:                              # learn the version first, to set an honest UA
+            probe = pw.chromium.launch(**launch)
+            options["user_agent"] = _user_agent(probe.version)
+            probe.close()
+        _state["context"] = pw.chromium.launch_persistent_context(profile, **launch, **options)
+    else:
+        _state["browser"] = pw.chromium.launch(**launch)
+        if launch["headless"]:
+            options["user_agent"] = _user_agent(_state["browser"].version)
+        _state["context"] = _state["browser"].new_context(**options)
+    atexit.register(close)
 
 
 def _page(store):
@@ -28,19 +75,14 @@ def _page(store):
     domain = store["domain"]
     if domain in _state["pages"]:
         return _state["pages"][domain], None
-    if _state["browser"] is None:
+    if _state["context"] is None:
         try:
-            from playwright.sync_api import sync_playwright
+            _start()
         except ImportError:
             return None, "the browser reader needs Playwright: pip install -r collector/requirements-browser.txt"
-        _state["playwright"] = sync_playwright().start()
-        # HEMZA_CHROME: use an installed Chrome instead of Playwright's own (e.g. on a home PC).
-        _state["browser"] = _state["playwright"].chromium.launch(
-            headless=True, executable_path=os.environ.get("HEMZA_CHROME") or None)
-        _state["context"] = _state["browser"].new_context(
-            user_agent=UA, locale="fr-MA", timezone_id="Africa/Casablanca",
-            viewport={"width": 1366, "height": 900})
-        atexit.register(close)
+        except Exception as e:
+            close()
+            return None, f"could not start the browser: {str(e).splitlines()[0][:200]}"
     page = _state["context"].new_page()
     blocked = _goto(page, f"https://{domain}/")
     if blocked:
@@ -61,21 +103,41 @@ def _goto(page, url):
         page.wait_for_load_state("networkidle", timeout=10_000)
     except Exception:
         pass                                                # busy pages never go idle; that is fine
-    if status in (403, 429, 503) or _is_challenge(page):
-        return f"bot challenge or refusal (HTTP {status}) on {url}"
+    refused = status in (403, 429, 503)
+    if refused or not _looks_normal(page, strict=False):
+        # Protection services first answer with a "checking your browser" page whose script reloads the
+        # real page after a few seconds. Let it run, as for any visitor (we never click a CAPTCHA).
+        for _ in range(CHALLENGE_WAIT_S // 2):
+            page.wait_for_timeout(2000)
+            if _looks_normal(page, strict=refused):
+                return None
+        return f"bot challenge or refusal (HTTP {status}) on {url}{_screenshot(page, url)}"
     if status >= 400:
         return f"HTTP {status} on {url}"
     return None
 
 
-def _is_challenge(page):
+def _looks_normal(page, strict):
+    """A check page shows challenge words and few links. After a refusal code we want proof of the
+    contrary (no challenge words AND plenty of links): block pages often show their text in a frame."""
     try:
         head = (page.title() or "") + " " + page.evaluate("document.body ? document.body.innerText.slice(0, 600) : ''")
-    except Exception:
+        links = page.evaluate("document.querySelectorAll('a[href]').length")
+    except Exception:                                       # page is reloading
         return False
-    # A real listing has product links; a challenge page has none.
-    has_products = page.evaluate("document.querySelectorAll('a[href]').length > 40")
-    return bool(CHALLENGE.search(head)) and not has_products
+    calm = not CHALLENGE.search(head)
+    return (calm and links > 40) if strict else (calm or links > 40)
+
+
+def _screenshot(page, url):
+    try:
+        name = re.sub(r"[^a-z0-9]+", "-", url.lower().split("//")[-1]).strip("-")[:60]
+        path = os.path.join(tempfile.gettempdir(), f"hemza-refused-{name}.png")
+        page.screenshot(path=path)
+        title = page.title()
+        return f" — page title: {title!r}, screenshot: {path}"
+    except Exception:
+        return ""
 
 
 def render(store, url, script, wait_for=None):
