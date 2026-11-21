@@ -1,5 +1,6 @@
 """Offline tests for the collector. Run: python collector/test_collect.py"""
 import io, json, os, re, sys, tempfile, unittest
+from urllib.parse import unquote
 from contextlib import redirect_stdout, redirect_stderr
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -39,9 +40,11 @@ def presta_product(i, price=700.0, regular=1300.0):
 
 class World:
     """Fake shops. Shopify lets one request through every `budget` seconds across ALL its stores."""
-    def __init__(self, shopify=None, woo=None, presta=None, budget=0, retry_after="60", blocked=()):
+    def __init__(self, shopify=None, woo=None, presta=None, budget=0, retry_after="60", blocked=(),
+                 woo_legacy=None, magento=None, zara=None):
         self.now = 0.0
         self.shopify, self.woo, self.presta = shopify or {}, woo or {}, presta or {}
+        self.woo_legacy, self.magento, self.zara = woo_legacy or {}, magento or {}, zara
         self.budget, self.retry_after, self.blocked = budget, retry_after, set(blocked)
         self.last_ok, self.requests = None, []
 
@@ -53,8 +56,29 @@ class World:
 
     def get(self, url, **_):
         domain, path = url.split("/")[2], url.split("/", 3)[3]
-        page = int(re.search(r"[?&]page=(\d+)", path).group(1))
+        found = re.search(r"[?&]page=(\d+)", path)
+        page = int(found.group(1)) if found else 1
         self.requests.append((round(self.now), domain, page))
+        if domain == "www.zara.com" and self.zara is not None:
+            if path.startswith("ma/fr/categories"):
+                return FakeResponse(200, {"categories": self.zara["tree"]})
+            listing = re.match(r"ma/fr/category/(\d+)/products", path)
+            if listing and int(listing.group(1)) in self.zara["listings"]:
+                products = self.zara["listings"][int(listing.group(1))]
+                return FakeResponse(200, {"productGroups": [{"elements": [{"commercialComponents": products}]}]})
+            return FakeResponse(404, html=True)
+        if path.startswith("graphql?query="):
+            if domain not in self.magento:
+                return FakeResponse(404, html=True)
+            query = unquote(path.split("query=", 1)[1])
+            size, current = map(int, re.search(r"pageSize:(\d+),currentPage:(\d+)", query).groups())
+            rows = self.magento[domain]
+            return FakeResponse(200, {"data": {"products": {
+                "page_info": {"total_pages": max(1, -(-len(rows) // size))},
+                "items": rows[(current - 1) * size:current * size]}}})
+        if path.startswith("wp-json/wc/store/products") and domain in self.woo_legacy:
+            limit = int(path.split("per_page=")[1].split("&")[0])
+            return FakeResponse(200, self.woo_legacy[domain][(page - 1) * limit:page * limit])
         if path.startswith("products.json"):
             too_soon = self.last_ok is not None and self.now - self.last_ok < self.budget
             if domain in self.blocked or too_soon:
@@ -231,13 +255,118 @@ class MixedRunTest(unittest.TestCase):
         woo_times = [t for t, d, _ in world.requests if d == "woo.ma"]
         self.assertLess(max(woo_times), 60)                                       # done within the first minute
 
+    def test_tier_filter(self):
+        world = World(shopify={"brand.ma": [shopify_product(1)], "shop.ma": [shopify_product(2)]})
+        stores = [{"name": "B", "domain": "brand.ma", "tier": "marque"}, {"name": "S", "domain": "shop.ma"}]
+        out = run(world, stores, argv=("--dry-run", "--tier", "marque"))
+        self.assertIn("Done: 1/1 stores read.", out)
+        self.assertNotIn("shop.ma", out)
+
     def test_detect_reports_the_platform(self):
         out = run(World(woo={"woo.ma": [woo_product(1)]}), [], argv=("--detect", "woo.ma"))
         self.assertIn("woocommerce  yes", out)
         self.assertIn('"platform": "woocommerce"', out)
 
     def test_unknown_platform(self):
-        self.assertEqual(platforms.fetch({"domain": "x", "platform": "magento"}, None)[0], "error")
+        self.assertEqual(platforms.fetch({"domain": "x", "platform": "nope"}, None)[0], "error")
+
+
+def magento_product(i, final=99.0, regular=299.0, stock="IN_STOCK"):
+    return {"id": i, "sku": f"R{i}", "name": f"ROBE LONGUE {i}", "url_key": f"r{i}-robe", "url_suffix": ".html",
+            "stock_status": stock, "small_image": {"url": f"https://www.marwa.com/media/r{i}.jpg"},
+            "categories": [{"name": "Robes"}],
+            "price_range": {"minimum_price": {"regular_price": {"value": regular}, "final_price": {"value": final}}}}
+
+
+def zara_product(i, price=29900, old=49900, section="WOMAN", family="DRESS", name=None):
+    return {"id": i, "name": name or f"ROBE {i}", "price": price, "oldPrice": old, "sectionName": section,
+            "familyName": family, "availability": "in_stock",
+            "seo": {"keyword": f"robe-{i}", "seoProductId": f"0{i}", "discernProductId": i},
+            "xmedia": [{"path": f"/assets/public/aa/{i}-p", "name": f"{i}-p", "timestamp": "1"}]}
+
+
+ZARA_TREE = [
+    {"id": 1, "name": "FEMME", "sectionName": "WOMAN", "subcategories": [
+        {"id": 10, "name": "COLLECTION", "layout": "products-category-view", "subcategories": [
+            {"id": 11, "name": "ROBES", "subcategories": [
+                {"id": 111, "name": "TOUT VOIR", "layout": "products-category-view"},
+                {"id": 112, "name": "COURTES", "layout": "products-category-view"}]},
+            {"id": 12, "name": "BAISSE DE PRIX", "subcategories": [
+                {"id": 121, "name": "TOUT VOIR", "layout": "products-category-view"}]}]},
+        {"id": 13, "name": "GUIDE", "layout": "marketing-content-view"}]},
+    {"id": 2, "name": "ENFANTS", "sectionName": "KID", "subcategories": [
+        {"id": 21, "name": "FILLE", "layout": "products-category-view"}]},
+    {"id": 3, "name": "BEAUTY", "sectionName": "BEAUTY", "subcategories": [
+        {"id": 31, "name": "TOUT VOIR", "layout": "products-category-view"}]},
+]
+
+
+class BrandReadersTest(unittest.TestCase):
+    def test_woocommerce_follows_the_announced_page_count(self):
+        world = World(woo_legacy={"old.ma": [woo_product(i) for i in range(60)]})
+        real = world.get
+        def capped(url, **kw):                     # the shop serves 25 per page whatever we ask
+            url = re.sub(r"per_page=\d+", "per_page=25", url)
+            response = real(url, **kw)
+            response.headers["X-WP-TotalPages"] = "3"
+            return response
+        world.get = capped
+        store = {"name": "Old", "domain": "old.ma", "platform": "woocommerce"}
+        status, items, cursor = read_one(world, store)
+        self.assertEqual((len(items), cursor), (25, 2))
+        status, items, cursor = read_one(world, store, 3)
+        self.assertEqual((len(items), cursor), (10, None))
+
+    def test_woocommerce_falls_back_to_the_older_store_api(self):
+        world = World(woo_legacy={"old.ma": [woo_product(1)]})
+        status, items, _ = read_one(world, {"name": "Old", "domain": "old.ma", "platform": "woocommerce"})
+        self.assertEqual((status, len(items)), ("ok", 1))
+
+    def test_magento_reads_prices_and_pages(self):
+        world = World(magento={"www.marwa.com": [magento_product(i) for i in range(150)]
+                               + [magento_product(999, final=249.0, regular=249.0, stock="OUT_OF_STOCK")]})
+        store = {"name": "Marwa", "domain": "www.marwa.com", "platform": "magento", "gender_hint": "femme"}
+        status, items, cursor = read_one(world, store)
+        self.assertEqual((status, len(items), cursor), ("ok", 100, 2))
+        first = items[0]
+        self.assertEqual((first["_price"], first["_compare_at"]), (99.0, 299.0))
+        self.assertEqual(first["product_url"], "https://www.marwa.com/r0-robe.html")
+        self.assertEqual((first["gender"], first["category"]), ("femme", "robes"))
+        status, items, cursor = read_one(world, store, cursor)
+        self.assertEqual((len(items), cursor), (51, None))
+        last = items[-1]
+        self.assertEqual((last["_compare_at"], last["in_stock"]), (None, False))
+
+    def test_zara_targets_price_drops_first_then_listings_and_skips_beauty(self):
+        self.assertEqual(platforms.zara_targets(ZARA_TREE), [121, 111, 21])
+
+    def test_zara_reads_every_listing_once_with_sections(self):
+        zara = {"tree": ZARA_TREE, "listings": {
+            121: [zara_product(1)],
+            111: [zara_product(1), zara_product(2, old=None), zara_product(3, family="PERFUME")],
+            21: [zara_product(4, section="KID", name="ROBE FILLE")]}}
+        world = World(zara=zara)
+        store = {"name": "Zara", "domain": "zara.com", "platform": "zara"}
+        cursor, items = None, []
+        for _ in range(5):
+            status, page, cursor = read_one(world, store, cursor)
+            self.assertEqual(status, "ok")
+            items += page
+            if cursor is None:
+                break
+        self.assertEqual([i["external_id"] for i in items], ["1", "2", "4"])          # no repeat, no perfume
+        drop = items[0]
+        self.assertEqual((drop["_price"], drop["_compare_at"]), (299.0, 499.0))
+        self.assertEqual(drop["product_url"], "https://www.zara.com/ma/fr/robe-1-p01.html?v1=1")
+        self.assertEqual(drop["image_url"], "https://static.zara.net/assets/public/aa/1-p/1-p.jpg?ts=1&w=563")
+        self.assertEqual(items[1]["_compare_at"], None)
+        self.assertEqual((items[2]["gender"], items[2]["category"]), ("enfant", "robes"))   # section wins over "robe"
+
+    def test_zara_runs_in_the_collector(self):
+        zara = {"tree": ZARA_TREE, "listings": {121: [zara_product(1)], 111: [zara_product(2)], 21: []}}
+        out = run(World(zara=zara), [{"name": "Zara", "domain": "zara.com", "platform": "zara"}])
+        self.assertIn("Done: 1/1 stores read.", out)
+        self.assertRegex(out, r"zara\.com\s+zara\s+2 products\s+complete")
 
 
 class ClassifyTest(unittest.TestCase):

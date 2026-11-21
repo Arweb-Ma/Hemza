@@ -1,5 +1,5 @@
 """
-Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop), classifies items
+Hemza.ma collector — reads store catalogs (Shopify, WooCommerce, PrestaShop, Magento, Zara), classifies items
 (femme / homme / enfant + category) and writes prices to Supabase.
 
 Usage (PowerShell: $env:NAME = "value" instead of export):
@@ -9,6 +9,7 @@ Usage (PowerShell: $env:NAME = "value" instead of export):
   python collect.py --dry-run                # read, but save nothing
   python collect.py --detect shop.ma other.ma  # which platform is it, and can we read it?
   python collect.py --only casquetta.ma      # one store
+  python collect.py --tier marque            # only the big brands (or: --tier boutique)
   python collect.py --max-minutes 60         # stop after an hour
 
 It is deliberately slow. Shopify stores share one queue (about one request a minute, slower
@@ -69,20 +70,21 @@ class DB:
         r = requests.post(f"{self.url}/{table}", headers=dict(self.h, Prefer="return=minimal"), json=rows, timeout=60)
         r.raise_for_status()
 
-    def latest_prices(self, product_ids):
-        if not product_ids:
-            return {}
-        ids = ",".join(map(str, product_ids))
-        r = requests.get(f"{self.url}/price_history?select=product_id,price,observed_at"
-                         f"&product_id=in.({ids})&order=observed_at.desc", headers=self.h, timeout=60)
-        r.raise_for_status()
+    def latest_prices(self, product_ids, chunk=300):
+        """Latest price row per product. Asked in chunks: a big brand page holds thousands of ids."""
         last = {}
-        for row in r.json():
-            last.setdefault(row["product_id"], row)
+        for i in range(0, len(product_ids), chunk):
+            ids = ",".join(map(str, product_ids[i:i + chunk]))
+            r = requests.get(f"{self.url}/price_history?select=product_id,price,observed_at"
+                             f"&product_id=in.({ids})&order=observed_at.desc", headers=self.h, timeout=60)
+            r.raise_for_status()
+            for row in r.json():
+                last.setdefault(row["product_id"], row)
         return last
 
 def save(db, store, items):
     store_row = db.upsert("stores", [{"name": store["name"], "domain": store["domain"], "platform": store.get("platform", "shopify"),
+                                       "tier": store.get("tier", "boutique"),
                                        "last_crawl_at": datetime.now(timezone.utc).isoformat()}], "domain")[0]
     now = datetime.now(timezone.utc).isoformat()
     prod_rows = [{k: v for k, v in it.items() if not k.startswith("_")} | {"store_id": store_row["id"], "last_seen_at": now}
@@ -137,6 +139,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--detect", nargs="+", metavar="DOMAIN", help="identify the platform of these shops")
     ap.add_argument("--only", nargs="+", metavar="DOMAIN", help="only these stores")
+    ap.add_argument("--tier", choices=["marque", "boutique"], help="only big brands, or only small shops")
     ap.add_argument("--max-minutes", type=int, default=180, help="stop after this long (default 180)")
     ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.json"))
     a = ap.parse_args()
@@ -148,6 +151,8 @@ def main():
         stores = json.load(f)["stores"]
     if a.only:
         stores = [s for s in stores if s["domain"] in a.only]
+    if a.tier:
+        stores = [s for s in stores if s.get("tier", "boutique") == a.tier]
     db = None if a.dry_run else DB()
 
     sleep, clock = (lambda s: time.sleep(s)), (lambda: time.monotonic())

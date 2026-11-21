@@ -9,9 +9,14 @@ create table if not exists stores (
   platform      text not null default 'shopify',   -- shopify | feed | manual
   affiliate_tpl text,                               -- e.g. 'https://kol.jumia.com/...{url}'
   active        boolean not null default true,
+  -- 'marque' = big brands (main pages, Telegram); 'boutique' = small shops (their own section)
+  tier          text not null default 'boutique' check (tier in ('marque', 'boutique')),
   last_crawl_at timestamptz,
   created_at    timestamptz not null default now()
 );
+
+alter table stores add column if not exists tier text not null default 'boutique'
+  check (tier in ('marque', 'boutique'));
 
 create table if not exists products (
   id            bigserial primary key,
@@ -90,7 +95,8 @@ select p.*, s.name as store_name, s.affiliate_tpl,
        -- share of the store's in-stock catalog that carries a crossed-out price.
        -- When a large part of a shop is permanently "on sale", its claims mean little.
        round((count(*) filter (where c.compare_at > c.price) over (partition by p.store_id))::numeric
-             / count(*) over (partition by p.store_id), 2) as store_promo_share
+             / count(*) over (partition by p.store_id), 2) as store_promo_share,
+       s.tier as store_tier
 from cur c
 join products p on p.id = c.product_id
 join stores   s on s.id = p.store_id
@@ -112,9 +118,10 @@ select id, store_id, external_id, handle, title, brand, gender, category, image_
     + case when n_obs is null or n_obs < 5 then coalesce(claimed_disc_pct,0) * 0.6 else 0 end
     + case when lowest_90d then 12 else 0 end
   ))::int as score,
-  verified, store_promo_share
+  verified, store_promo_share, store_tier
 from deal_candidates
 where not coalesce(fake_promo, false)
+  and store_tier = 'marque'            -- Telegram only posts big-brand deals
   and ( coalesce(real_disc_pct,0) >= 20
         -- not verified yet: accept the store's claim only if it is big (>= 30 %)
         -- and the store does not have over 40 % of its catalog "on sale"
@@ -134,7 +141,7 @@ select id, store_id, external_id, handle, title, brand, gender, category, image_
     + case when n_obs is null or n_obs < 5 then coalesce(claimed_disc_pct,0) * 0.6 else 0 end
     + case when lowest_90d then 12 else 0 end
   ))::int as score,
-  verified, store_promo_share
+  verified, store_promo_share, store_tier
 from deal_candidates
 where not coalesce(fake_promo, false)
   and ( coalesce(real_disc_pct, 0) >= 10

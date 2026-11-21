@@ -15,6 +15,7 @@ Each step runs only if it is configured, and a failing step never stops the next
   python run.py                  # full cycle
   python run.py --max-minutes 100
   python run.py --skip-collect   # only post and refresh
+  python run.py --tier marque    # collect only the big brands (or: --tier boutique)
 """
 import argparse, os, subprocess, sys
 from datetime import datetime
@@ -22,7 +23,7 @@ from datetime import datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def plan(env, max_minutes=100, skip_collect=False):
+def plan(env, max_minutes=100, skip_collect=False, tier=None):
     """Returns [(name, command or None, reason when skipped)]. Pure, so it can be tested."""
     steps = []
     have_db = bool(env.get("SUPABASE_URL") and env.get("SUPABASE_SERVICE_KEY"))
@@ -33,7 +34,8 @@ def plan(env, max_minutes=100, skip_collect=False):
     elif not have_db:
         steps.append(("collect", None, "SUPABASE_URL / SUPABASE_SERVICE_KEY are not set"))
     else:
-        steps.append(("collect", script("collect.py") + ["--max-minutes", str(max_minutes)], ""))
+        steps.append(("collect", script("collect.py") + ["--max-minutes", str(max_minutes)]
+                      + (["--tier", tier] if tier else []), ""))
 
     if not have_db:
         steps.append(("post", None, "SUPABASE_URL / SUPABASE_SERVICE_KEY are not set"))
@@ -56,12 +58,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-minutes", type=int, default=100)
     ap.add_argument("--skip-collect", action="store_true")
+    ap.add_argument("--tier", choices=["marque", "boutique"])
     a = ap.parse_args()
 
     stamp = lambda: datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"\n===== Hemza cycle started {stamp()} =====", flush=True)
     failures = []
-    for name, command, reason in plan(os.environ, a.max_minutes, a.skip_collect):
+    for name, command, reason in plan(os.environ, a.max_minutes, a.skip_collect, a.tier):
         if command is None:
             print(f"[{name}] skipped: {reason}", flush=True)
             continue
