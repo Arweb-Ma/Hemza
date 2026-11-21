@@ -85,6 +85,7 @@ class DB:
 def save(db, store, items):
     store_row = db.upsert("stores", [{"name": store["name"], "domain": store["domain"], "platform": store.get("platform", "shopify"),
                                        "tier": store.get("tier", "boutique"),
+                                       "reads_sale_only": bool(store.get("sale_only")),
                                        "last_crawl_at": datetime.now(timezone.utc).isoformat()}], "domain")[0]
     now = datetime.now(timezone.utc).isoformat()
     prod_rows = [{k: v for k, v in it.items() if not k.startswith("_")} | {"store_id": store_row["id"], "last_seen_at": now}

@@ -17,6 +17,9 @@ create table if not exists stores (
 
 alter table stores add column if not exists tier text not null default 'boutique'
   check (tier in ('marque', 'boutique'));
+-- true when we only read a shop's sale listings (e.g. LC Waikiki): its "share of catalog on sale"
+-- would read 100 % and mean nothing, so the views leave it empty.
+alter table stores add column if not exists reads_sale_only boolean not null default false;
 
 create table if not exists products (
   id            bigserial primary key,
@@ -94,8 +97,9 @@ select p.*, s.name as store_name, s.affiliate_tpl,
        (coalesce(h.n_obs, 0) >= 5) as verified,
        -- share of the store's in-stock catalog that carries a crossed-out price.
        -- When a large part of a shop is permanently "on sale", its claims mean little.
-       round((count(*) filter (where c.compare_at > c.price) over (partition by p.store_id))::numeric
-             / count(*) over (partition by p.store_id), 2) as store_promo_share,
+       case when s.reads_sale_only then null else
+         round((count(*) filter (where c.compare_at > c.price) over (partition by p.store_id))::numeric
+               / count(*) over (partition by p.store_id), 2) end as store_promo_share,
        s.tier as store_tier
 from cur c
 join products p on p.id = c.product_id
@@ -125,7 +129,7 @@ where not coalesce(fake_promo, false)
   and ( coalesce(real_disc_pct,0) >= 20
         -- not verified yet: accept the store's claim only if it is big (>= 30 %)
         -- and the store does not have over 40 % of its catalog "on sale"
-     or (not verified and coalesce(claimed_disc_pct,0) >= 30 and store_promo_share <= 0.40) );
+     or (not verified and coalesce(claimed_disc_pct,0) >= 30 and coalesce(store_promo_share, 0) <= 0.40) );
 
 -- Every promo worth showing, from every shop. The site lets visitors choose how strict to be
 -- (minimum discount, verified only, hide shops that are always "on sale"); the stricter `deals`

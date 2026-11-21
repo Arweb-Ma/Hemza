@@ -421,6 +421,7 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(collect.classify("Robe longue satin", "", ["Femme"]), ("femme", "robes"))
         self.assertEqual(collect.classify("Ensemble garçon 6 ans", "", []), ("enfant", "ensembles"))
         self.assertEqual(collect.classify("حذاء رجالي جلد", "", []), ("homme", "chaussures"))
+        self.assertEqual(collect.classify("Shorts Homme Coupe Ample", "", []), ("homme", "pantalons"))
 
     def test_store_hints_fill_the_gaps(self):
         self.assertEqual(collect.classify("Uncloud Fermée Noir", "", [], "homme", "accessoires"), ("homme", "accessoires"))
