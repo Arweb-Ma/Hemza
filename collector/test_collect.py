@@ -311,8 +311,9 @@ ZARA_TREE = [
 ]
 
 
-def lcw_product(i, regular=299.0, sale=0.0, group="Femmes", stock=3):
-    return {"OptionId": i, "ModelId": 1000 + i, "ModelUrl": f"/fr/robe-{i}-o-{i}", "ProductDescription": f"Robe {i}",
+def lcw_product(i, regular=299.0, sale=0.0, group="Femmes", stock=3, badge=None):
+    return {"CampaignBadges": [{"DiscountedPrice": badge, "ShowDiscountedPrice": True, "Description": "Produits Soldés"}]
+            if badge else [], "OptionId": i, "ModelId": 1000 + i, "ModelUrl": f"/fr/robe-{i}-o-{i}", "ProductDescription": f"Robe {i}",
             "Brand": "LCW", "PriceValue": regular, "DiscountedPriceValue": sale, "ProductGroup": group,
             "Gender": "", "Category": "Robes", "BreadCrump": {"Level1": group}, "AvailableStock": stock,
             "DefaultOptionImageUrl": f"https://img-lcwaikiki.mncdn.com/{i}.jpg"}
@@ -327,7 +328,7 @@ class BrandReadersTest(unittest.TestCase):
         lcw = {"home": LCW_HOME, "listings": {
             "/fr/mvc/shirts-tunics-women-sale-new": [[lcw_product(1, sale=199.0), lcw_product(2)],
                                                       [lcw_product(3, sale=99.0, stock=0)]],
-            "/fr/mvc/men-sale-global": [[lcw_product(1, sale=199.0), lcw_product(4, sale=149.0, group="Hommes")]]}}
+            "/fr/mvc/men-sale-global": [[lcw_product(1, sale=199.0), lcw_product(4, badge=149.0, group="Hommes")]]}}
         world = World(lcw=lcw)
         store = {"name": "LC Waikiki", "domain": "www.lcwaikiki.ma", "platform": "lcwaikiki"}
         cursor, items, steps = None, [], 0
@@ -344,7 +345,7 @@ class BrandReadersTest(unittest.TestCase):
         self.assertEqual(first["product_url"], "https://www.lcwaikiki.ma/fr/robe-1-o-1")
         self.assertEqual((items[1]["_price"], items[1]["_compare_at"]), (299.0, None))
         self.assertFalse(items[2]["in_stock"])
-        self.assertEqual(items[3]["gender"], "homme")
+        self.assertEqual((items[3]["_price"], items[3]["_compare_at"], items[3]["gender"]), (149.0, 299.0, "homme"))
         self.assertNotIn("/fr/femmes-t-1", str(world.requests))         # only sale listings are read
 
 

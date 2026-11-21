@@ -369,8 +369,11 @@ def lcwaikiki(store, cursor, sample=False):
         if key in seen or not url or not regular:
             continue
         seen.add(key)
-        sale = p.get("DiscountedPriceValue") or 0
-        price, was = (sale, regular) if 0 < sale < regular else (regular, None)
+        # The sale price is either on the product or, on sale listings, on its "Produits Soldés" badge.
+        offers = [p.get("DiscountedPriceValue") or 0] + [
+            b.get("DiscountedPrice") or 0 for b in p.get("CampaignBadges") or [] if b.get("ShowDiscountedPrice")]
+        sale = min([o for o in offers if 0 < o < regular] or [0])
+        price, was = (sale, regular) if sale else (regular, None)
         crumbs = p.get("BreadCrump") or {}
         items.append(item(
             store, external_id=key, handle=url.rsplit("/", 1)[-1], title=p.get("ProductDescription"),
@@ -380,7 +383,8 @@ def lcwaikiki(store, cursor, sample=False):
         ))
     if sample:
         return ("ok", items[:3], None)
-    pages = int((model.get("PageInfo") or {}).get("PageCount") or 0) or (page + 1 if len(products) >= 100 else page)
+    announced = (model.get("PageInfo") or {}).get("PageCount") or (model.get("CatalogList") or {}).get("PageCount")
+    pages = int(announced or 0) or (page + 1 if len(products) >= 100 else page)
     if page < min(pages, MAX_PAGES):
         return ("ok", items, {**cursor, "page": page + 1})
     return ("ok", items, following)
