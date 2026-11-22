@@ -43,8 +43,8 @@ def plan(env, max_minutes=100, skip_collect=False, tier=None):
         steps.append(("post", None, "TELEGRAM_BOT_TOKEN / TELEGRAM_CHANNEL are not set"))
     else:
         # Until our own price history can verify drops (5 days of readings), also post the
-        # shops' announced promos, labelled "vérification en cours". About 6 a day, daytime only.
-        steps.append(("post", script("post_deals.py") + ["--include-unverified", "--max", "1",
+        # shops' announced promos, labelled "vérification en cours". About 6 a day, daytime only; 2 per run because GitHub often delays or skips scheduled runs.
+        steps.append(("post", script("post_deals.py") + ["--include-unverified", "--max", "2",
                                                          "--per-day", "6", "--between", "9-22"], ""))
 
     if env.get("SITE_DEPLOY_HOOK"):
