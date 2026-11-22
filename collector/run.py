@@ -2,7 +2,7 @@
 One full cycle, meant to be launched by a scheduler every two hours:
 
   1. collect   read the stores and save prices               (collect.py)
-  2. post      send new verified deals to Telegram           (post_deals.py)
+  2. post      send new deals to Telegram, ~6/day, verified first (post_deals.py)
   3. refresh   ask the website to rebuild with fresh data    (optional deploy hook)
 
 Each step runs only if it is configured, and a failing step never stops the next one.
@@ -42,7 +42,10 @@ def plan(env, max_minutes=100, skip_collect=False, tier=None):
     elif not (env.get("TELEGRAM_BOT_TOKEN") and env.get("TELEGRAM_CHANNEL")):
         steps.append(("post", None, "TELEGRAM_BOT_TOKEN / TELEGRAM_CHANNEL are not set"))
     else:
-        steps.append(("post", script("post_deals.py"), ""))
+        # Until our own price history can verify drops (5 days of readings), also post the
+        # shops' announced promos, labelled "vérification en cours". About 6 a day, daytime only.
+        steps.append(("post", script("post_deals.py") + ["--include-unverified", "--max", "1",
+                                                         "--per-day", "6", "--between", "9-22"], ""))
 
     if env.get("SITE_DEPLOY_HOOK"):
         steps.append(("refresh", "hook", ""))

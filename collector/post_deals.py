@@ -6,10 +6,39 @@ Posts the best new deals to a Telegram channel (and prepares captions for Instag
   export SITE_URL=https://hemza.ma     # optional: posts then link to the deal's page on the site
   python post_deals.py --min-score 40 --max 5          # post up to 5 deals
   python post_deals.py --review                        # print only, post nothing (manual approval)
+  python post_deals.py --include-unverified --max 1 --per-day 6 --between 9-22   # what run.py does
 
 Never re-posts a product unless its price dropped again since the last post.
+Verified drops always go first; shops that were posted least in the last 24 h come next,
+so one shop with hundreds of promos (LC Waikiki) does not fill the whole channel.
 """
 import argparse, os, sys, requests
+from datetime import datetime, timedelta, timezone
+
+def morocco_hour(now=None):
+    """Local hour in Morocco (UTC+1, UTC+0 during Ramadan when tzdata knows it)."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        return now.astimezone(ZoneInfo("Africa/Casablanca")).hour
+    except Exception:                          # Windows without tzdata
+        return (now + timedelta(hours=1)).hour
+
+def in_window(window, hour):
+    """window like "9-22": posting allowed from 9:00 up to 21:59."""
+    if not window:
+        return True
+    start, end = (int(x) for x in window.split("-"))
+    return start <= hour < end
+
+def recent(posts, hours=24, now=None):
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for p in posts:
+        at = p.get("posted_at")
+        if at and datetime.fromisoformat(at.replace("Z", "+00:00")) > now - timedelta(hours=hours):
+            out.append(p)
+    return out
 
 def sb(path, method="GET", json=None):
     url = os.environ["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path
@@ -56,13 +85,31 @@ def send(token, channel, deal, text):
     r.raise_for_status()
 
 def select(deals, posts, limit, include_unverified=False):
-    """Deals worth posting now: never posted, or cheaper than the last time we posted them."""
+    """Deals worth posting now: never posted, or cheaper than the last time we posted them.
+    Verified first, then shops posted least in the last 24 h, then the original (score) order."""
     last = {}
     for p in posts:
         last[p["product_id"]] = min(float(p["price"]), last.get(p["product_id"], float("inf")))
     if not include_unverified:
         deals = [d for d in deals if d.get("verified")]
-    return [d for d in deals if float(d["price"]) < last.get(d["id"], float("inf"))][:limit]
+    fresh = [d for d in deals if float(d["price"]) < last.get(d["id"], float("inf"))]
+    shop_posts = {}
+    for p in recent(posts):
+        store = (p.get("products") or {}).get("store_id")
+        shop_posts[store] = shop_posts.get(store, 0) + 1
+    order = {id(d): i for i, d in enumerate(fresh)}
+    fresh.sort(key=lambda d: (not d.get("verified"), shop_posts.get(d.get("store_id"), 0), order[id(d)]))
+    picked, seen = [], set()
+    for d in fresh:                            # same item in several colours: post it once
+        key = (d.get("store_id"), d.get("title"), float(d["price"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(d)
+        shop_posts[d.get("store_id")] = shop_posts.get(d.get("store_id"), 0) + 1
+        if len(picked) >= limit:
+            break
+    return picked
 
 def main():
     for stream in (sys.stdout, sys.stderr):
@@ -74,12 +121,24 @@ def main():
     ap.add_argument("--review", action="store_true")
     ap.add_argument("--include-unverified", action="store_true",
                     help="also post promos we could not check against our own price history yet")
+    ap.add_argument("--per-day", type=int, default=0, help="at most this many posts in any 24 h (0 = no limit)")
+    ap.add_argument("--between", default="", help='only post during these Morocco hours, e.g. "9-22"')
     a = ap.parse_args()
+
+    if not a.review and not in_window(a.between, morocco_hour()):
+        print(f"Outside posting hours ({a.between}h Morocco time).")
+        return
 
     only_verified = "" if a.include_unverified else "&verified=is.true"
     deals = sb(f"deals?select=*&score=gte.{a.min_score}{only_verified}&order=score.desc&limit=200")
-    posts = sb("posts?select=product_id,price&channel=eq.telegram")
-    fresh = select(deals, posts, a.max, a.include_unverified)
+    posts = sb("posts?select=product_id,price,posted_at,products(store_id)&channel=eq.telegram")
+    limit = a.max
+    if a.per_day and not a.review:
+        limit = min(limit, a.per_day - len(recent(posts)))
+        if limit <= 0:
+            print(f"Daily limit reached ({a.per_day} posts in 24 h).")
+            return
+    fresh = select(deals, posts, limit, a.include_unverified)
     if not fresh:
         print("Nothing new to post.")
         return

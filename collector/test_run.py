@@ -1,5 +1,6 @@
 """Offline tests for the cycle runner and the Telegram poster. Run: python collector/test_run.py"""
 import os, sys, unittest
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 import post_deals, run
@@ -55,12 +56,34 @@ class PosterTest(unittest.TestCase):
         self.assertEqual(post_deals.link(DEAL), "https://hemza.ma/promo/7/")
 
     def test_only_new_or_cheaper_verified_deals_are_posted(self):
-        deals = [DEAL, {**DEAL, "id": 8}, {**DEAL, "id": 9, "verified": False}, {**DEAL, "id": 10, "price": "650.00"}]
+        deals = [DEAL, {**DEAL, "id": 8}, {**DEAL, "id": 9, "verified": False, "title": "Jean"}, {**DEAL, "id": 10, "price": "650.00"}]
         posts = [{"product_id": 7, "price": "700.00"},                      # same price: not again
                  {"product_id": 10, "price": "900.00"}, {"product_id": 10, "price": "700.00"}]  # cheaper now
         self.assertEqual([d["id"] for d in post_deals.select(deals, posts, 5)], [8, 10])
-        self.assertEqual([d["id"] for d in post_deals.select(deals, posts, 5, include_unverified=True)], [8, 9, 10])
+        self.assertEqual([d["id"] for d in post_deals.select(deals, posts, 5, include_unverified=True)], [8, 10, 9])
         self.assertEqual(len(post_deals.select(deals, posts, 1)), 1)
+
+
+    def test_shops_rotate_and_colours_are_not_repeated(self):
+        lcw = {**DEAL, "verified": False, "store_id": 1}
+        deals = [{**lcw, "id": 1, "title": "Sweat"}, {**lcw, "id": 2, "title": "Sweat"},
+                 {**lcw, "id": 3, "title": "Short"}, {**lcw, "id": 4, "store_id": 2, "title": "Veste"}]
+        now = datetime.now(timezone.utc).isoformat()
+        posts = [{"product_id": 99, "price": "10", "posted_at": now, "products": {"store_id": 1}}]
+        self.assertEqual([d["id"] for d in post_deals.select(deals, posts, 3, include_unverified=True)], [4, 1, 3])
+
+    def test_posting_hours_and_daily_count(self):
+        self.assertTrue(post_deals.in_window("9-22", 9))
+        self.assertFalse(post_deals.in_window("9-22", 22))
+        self.assertTrue(post_deals.in_window("", 3))
+        old = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
+        self.assertEqual(len(post_deals.recent([{"posted_at": old}, {"posted_at": now}, {}])), 1)
+
+    def test_runner_posts_unverified_with_a_daily_cap(self):
+        command = dict((n, c) for n, c, _ in run.plan({**DB, **TG}))["post"]
+        self.assertIn("--include-unverified", command)
+        self.assertEqual(command[command.index("--per-day") + 1], "6")
 
 
 if __name__ == "__main__":
