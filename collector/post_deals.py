@@ -16,13 +16,8 @@ import argparse, os, sys, requests
 from datetime import datetime, timedelta, timezone
 
 def morocco_hour(now=None):
-    """Local hour in Morocco (UTC+1, UTC+0 during Ramadan when tzdata knows it)."""
-    now = now or datetime.now(timezone.utc)
-    try:
-        from zoneinfo import ZoneInfo
-        return now.astimezone(ZoneInfo("Africa/Casablanca")).hour
-    except Exception:                          # Windows without tzdata
-        return (now + timedelta(hours=1)).hour
+    """Local hour in Morocco: GMT, permanently, since 20 September 2026 (decree 2.26.530)."""
+    return (now or datetime.now(timezone.utc)).hour
 
 def in_window(window, hour):
     """window like "9-22": posting allowed from 9:00 up to 21:59."""
