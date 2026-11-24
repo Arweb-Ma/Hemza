@@ -196,6 +196,25 @@ class ShopifyQueueTest(unittest.TestCase):
         run(world, ["a.ma", "b.ma"], argv=("--dry-run", "--only", "b.ma"))
         self.assertEqual([d for _, d, _ in world.requests], ["b.ma"])
 
+    def test_where_splits_pc_stores_from_server_stores(self):
+        stores = ["a.ma", {"name": "b.ma", "domain": "b.ma", "pc": True}]
+        world = World(shopify={"a.ma": [shopify_product(1)], "b.ma": [shopify_product(2)]})
+        run(world, stores, argv=("--dry-run", "--where", "server"))
+        self.assertEqual([d for _, d, _ in world.requests], ["a.ma"])
+        world = World(shopify={"a.ma": [shopify_product(1)], "b.ma": [shopify_product(2)]})
+        run(world, stores, argv=("--dry-run", "--where", "pc"))
+        self.assertEqual([d for _, d, _ in world.requests], ["b.ma"])
+
+    def test_github_actions_skips_pc_stores_by_default(self):
+        stores = ["a.ma", {"name": "b.ma", "domain": "b.ma", "pc": True}]
+        world = World(shopify={"a.ma": [shopify_product(1)], "b.ma": [shopify_product(2)]})
+        os.environ["GITHUB_ACTIONS"] = "true"
+        try:
+            run(world, stores)
+        finally:
+            del os.environ["GITHUB_ACTIONS"]
+        self.assertEqual([d for _, d, _ in world.requests], ["a.ma"])
+
 
 class WooCommerceTest(unittest.TestCase):
     STORE = {"name": "Woo", "domain": "woo.ma", "platform": "woocommerce"}

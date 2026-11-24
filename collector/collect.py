@@ -141,6 +141,8 @@ def main():
     ap.add_argument("--detect", nargs="+", metavar="DOMAIN", help="identify the platform of these shops")
     ap.add_argument("--only", nargs="+", metavar="DOMAIN", help="only these stores")
     ap.add_argument("--tier", choices=["marque", "boutique"], help="only big brands, or only small shops")
+    ap.add_argument("--where", choices=["pc", "server"],
+                    help='pc: only stores marked "pc" (refused from servers); server: all the others')
     ap.add_argument("--max-minutes", type=int, default=180, help="stop after this long (default 180)")
     ap.add_argument("--stores", default=os.path.join(os.path.dirname(__file__), "stores.json"))
     a = ap.parse_args()
@@ -154,6 +156,10 @@ def main():
         stores = [s for s in stores if s["domain"] in a.only]
     if a.tier:
         stores = [s for s in stores if s.get("tier", "boutique") == a.tier]
+    # On GitHub Actions the "pc" stores are always refused, so they are skipped unless asked for.
+    where = a.where or ("server" if os.environ.get("GITHUB_ACTIONS") == "true" and not a.only else None)
+    if where:
+        stores = [s for s in stores if bool(s.get("pc")) == (where == "pc")]
     db = None if a.dry_run else DB()
 
     sleep, clock = (lambda s: time.sleep(s)), (lambda: time.monotonic())

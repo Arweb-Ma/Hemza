@@ -16,6 +16,7 @@ Each step runs only if it is configured, and a failing step never stops the next
   python run.py --max-minutes 100
   python run.py --skip-collect   # only post and refresh
   python run.py --tier marque    # collect only the big brands (or: --tier boutique)
+  python run.py --where pc       # only the stores refused from servers (Mehdi's PC); --where server: the rest
 """
 import argparse, os, subprocess, sys
 from datetime import datetime
@@ -23,7 +24,7 @@ from datetime import datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def plan(env, max_minutes=100, skip_collect=False, tier=None):
+def plan(env, max_minutes=100, skip_collect=False, tier=None, where=None):
     """Returns [(name, command or None, reason when skipped)]. Pure, so it can be tested."""
     steps = []
     have_db = bool(env.get("SUPABASE_URL") and env.get("SUPABASE_SERVICE_KEY"))
@@ -35,7 +36,8 @@ def plan(env, max_minutes=100, skip_collect=False, tier=None):
         steps.append(("collect", None, "SUPABASE_URL / SUPABASE_SERVICE_KEY are not set"))
     else:
         steps.append(("collect", script("collect.py") + ["--max-minutes", str(max_minutes)]
-                      + (["--tier", tier] if tier else []), ""))
+                      + (["--tier", tier] if tier else [])
+                      + (["--where", where] if where else []), ""))
 
     if not have_db:
         steps.append(("post", None, "SUPABASE_URL / SUPABASE_SERVICE_KEY are not set"))
@@ -62,12 +64,13 @@ def main():
     ap.add_argument("--max-minutes", type=int, default=100)
     ap.add_argument("--skip-collect", action="store_true")
     ap.add_argument("--tier", choices=["marque", "boutique"])
+    ap.add_argument("--where", choices=["pc", "server"])
     a = ap.parse_args()
 
     stamp = lambda: datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"\n===== Hemza cycle started {stamp()} =====", flush=True)
     failures = []
-    for name, command, reason in plan(os.environ, a.max_minutes, a.skip_collect, a.tier):
+    for name, command, reason in plan(os.environ, a.max_minutes, a.skip_collect, a.tier, a.where):
         if command is None:
             print(f"[{name}] skipped: {reason}", flush=True)
             continue

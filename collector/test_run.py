@@ -29,6 +29,11 @@ class PlanTest(unittest.TestCase):
         command = run.plan(DB, max_minutes=45)[0][1]
         self.assertEqual(command[-2:], ["--max-minutes", "45"])
 
+    def test_where_is_passed_to_the_collector(self):
+        command = run.plan(DB, tier="marque", where="pc")[0][1]
+        self.assertEqual(command[-4:], ["--tier", "marque", "--where", "pc"])
+        self.assertNotIn("--where", run.plan(DB)[0][1])
+
 
 DEAL = {"id": 7, "title": "Veste en cuir", "gender": "homme", "price": "700.00", "median_30d": 1300, "n_obs": 19,
         "compare_at": "1500.00", "real_disc_pct": 46, "claimed_disc_pct": 53, "lowest_90d": True,
