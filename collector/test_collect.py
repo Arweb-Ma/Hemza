@@ -802,5 +802,122 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(collect.classify("Uncloud Fermée Noir", "", [], "homme", "accessoires"), ("homme", "accessoires"))
 
 
+def inditex_product(pid, price="29900", old="49900", name="ROBE MIDI", section="WOMEN", sizes=None, url=None):
+    sizes = sizes if sizes is not None else [{"name": "M", "price": price, "oldPrice": old, "isBuyable": True}]
+    return {"id": pid, "name": name, "bundleProductSummaries": [{
+        "id": pid * 10, "name": name, "productUrl": url or f"robe-midi-l0{pid}", "sectionNameEN": section,
+        "familyName": "DRESS", "detail": {"colors": [
+            {"id": "800", "sizes": [{**s, "price": str(int(s["price"]) + 1000)} for s in sizes],
+             "image": {"url": f"/2026/I/0/1/p/{pid}/800", "type": ["2"]}},
+            {"id": "400", "sizes": sizes, "image": {"url": f"/2026/I/0/1/p/{pid}/400", "type": ["2"]}}]}}]}
+
+
+class InditexBrowser:
+    """Answers like the Inditex /itxrest/ API; `menu=None` makes the menu endpoint fail (older sites)."""
+    def __init__(self, menu=None, tree=None, listings=None, products=None):
+        self.menu, self.tree, self.listings, self.products, self.calls = menu, tree, listings or {}, products or {}, []
+    def get_json(self, store, url, headers=None):
+        self.calls.append(url)
+        if re.search(r"/catalog/store/\d+\?", url):
+            return ("ok", {"catalogs": [{"id": 999, "type": 100}, {"id": 777, "type": 1}],
+                           "supportedLanguages": [{"id": -1, "code": "en"}, {"id": -6, "code": "fr"}],
+                           "details": {"locale": {"currencyDecimals": -2}, "imageBaseUrl": "https://static.test.net/4/photos2"}}, None)
+        if "/menu" in url:
+            return ("ok", self.menu, None) if self.menu is not None else ("error", "HTTP 404 [browser]")
+        if url.split("?")[0].endswith("/category"):
+            return ("ok", self.tree, None)
+        listing = re.search(r"/(?:grid|category)/([\w-]+)(?:/product)?\?", url)
+        if listing and "productsArray" not in url:
+            return ("ok", {"productIds": self.listings.get(listing.group(1), [])}, None)
+        ids = re.search(r"productIds=([\d,]+)", url).group(1).split(",")
+        return ("ok", {"products": [self.products[int(i)] if int(i) in self.products
+                                    else {"description": "Item not found", "key": "_ERR_PRODUCT_NOT_FOUND"} for i in ids]}, None)
+
+
+def read_all(store, browser):
+    platforms._browser = browser
+    try:
+        cursor, items = None, []
+        with redirect_stdout(io.StringIO()):
+            while True:
+                status, page, cursor = platforms.fetch(store, cursor)
+                assert status == "ok", (status, page, cursor)
+                items += page
+                if cursor is None:
+                    return items
+    finally:
+        platforms._browser = None
+
+
+class InditexTest(unittest.TestCase):
+    STORE = {"name": "Bershka", "domain": "www.bershka.com", "platform": "inditex", "via": "browser",
+             "prefix": "/ma/", "url_style": "c0p", "store_id": 45109536, "catalog_id": 1}
+    MENU = {"items": [
+        {"name": "FEMME", "key": "BSK_WOMAN", "content": {"type": "grid", "id": "BSK_WOMAN"}, "children": [
+            {"name": "SOLDES", "children": [{"name": "Robes", "key": "x", "content": {"type": "grid", "id": "g-sale"}}]},
+            {"name": "Voir tout", "key": "y", "content": {"type": "grid", "id": "g-all"}},
+            {"name": "Parfums", "key": "z", "content": {"type": "grid", "id": "g-perfume"}},
+            {"name": "Lookbook", "key": "m", "content": {"type": "marketing", "id": "mk"}}]},
+        {"name": "HOMME", "children": [{"name": "Robes", "key": "w", "content": {"type": "grid", "id": "g-other"}}]}]}
+
+    def test_menu_sale_first_then_see_all_one_product_cheapest_colour(self):
+        browser = InditexBrowser(menu=self.MENU, listings={"g-sale": [1, 2, 404], "g-all": [2, 3]},
+                                 products={1: inditex_product(1), 2: inditex_product(2, section="MEN", name="CHEMISE"),
+                                           3: inditex_product(3, old=None)})
+        items = read_all(self.STORE, browser)
+        self.assertEqual([i["external_id"] for i in items], ["1", "2", "3"])        # 404 = error entry, skipped
+        first = items[0]
+        self.assertEqual((first["_price"], first["_compare_at"]), (299.0, 499.0))  # cheapest colour, MAD
+        self.assertEqual(first["product_url"], "https://www.bershka.com/ma/robe-midi-c0p1.html")
+        self.assertEqual(first["image_url"], "https://static.test.net/4/photos2/2026/I/0/1/p/1/400_2_1_0.jpg")
+        self.assertEqual((first["gender"], first["category"], first["brand"]), ("femme", "robes", "Bershka"))
+        self.assertEqual(items[1]["gender"], "homme")                                # the product's own section
+        self.assertIsNone(items[2]["_compare_at"])
+        asked = " ".join(browser.calls)
+        self.assertNotIn("g-perfume", asked)
+        self.assertNotIn("g-other", asked)
+        self.assertNotIn("BSK_WOMAN", asked.replace("menu", ""))                    # self-named node is not a grid
+        self.assertNotIn("/marketing/", asked)
+        self.assertIn("languageId=-6", asked)                                        # French
+        self.assertIn("/777/productsArray", asked)                                   # storefront catalog (type 1)
+
+    def test_category_tree_when_there_is_no_menu_and_reference_urls(self):
+        tree = {"categories": [{"name": "HOMME", "subcategories": [
+            {"name": "Black Friday", "id": 11, "viewCategoryId": 12}, {"name": "Voir tout", "id": 13}]}]}
+        store = {**self.STORE, "name": "Pull&Bear", "domain": "www.pullandbear.com", "url_style": None}
+        browser = InditexBrowser(tree=tree, listings={"12": [5], "13": [5, 6]},
+                                 products={5: inditex_product(5, section="", name="JEAN BAGGY", url="jean-baggy-l03684512"),
+                                           6: inditex_product(6, section="")})
+        items = read_all(store, browser)
+        self.assertEqual([i["external_id"] for i in items], ["5", "6"])
+        self.assertEqual(items[0]["product_url"], "https://www.pullandbear.com/ma/jean-baggy-l03684512")
+        self.assertEqual(items[0]["gender"], "homme")                                # from the listing trail
+        self.assertTrue(any("/category/12/product?" in c for c in browser.calls))
+
+    def test_max_products_and_batches_of_40(self):
+        products = {i: inditex_product(i) for i in range(1, 101)}
+        browser = InditexBrowser(menu=self.MENU, listings={"g-sale": list(range(1, 101)), "g-all": [1]},
+                                 products=products)
+        items = read_all({**self.STORE, "max_products": 90}, browser)
+        self.assertEqual(len(items), 90)
+        self.assertEqual(sum("productsArray" in c for c in browser.calls), 3)        # 40 + 40 + 10
+        self.assertFalse(any("/grid/g-all" in c for c in browser.calls))             # limit reached
+
+    def test_no_listing_is_an_error(self):
+        platforms._browser = InditexBrowser(menu={"items": []}, tree={"categories": []})
+        try:
+            self.assertEqual(platforms.fetch(self.STORE, None)[0], "error")
+        finally:
+            platforms._browser = None
+
+    def test_listed_stores_are_valid(self):
+        with open(os.path.join(os.path.dirname(__file__), "stores.json"), encoding="utf-8") as f:
+            stores = {s["name"]: s for s in json.load(f)["stores"]}
+        for name in ("Pull&Bear", "Bershka"):
+            s = stores[name]
+            self.assertEqual((s["platform"], s["via"], s["pc"], s["tier"]), ("inditex", "browser", True, "marque"))
+            self.assertIn(s["platform"], platforms.ADAPTERS)
+
+
 if __name__ == "__main__":
     unittest.main()

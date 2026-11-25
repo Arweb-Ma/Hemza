@@ -15,6 +15,7 @@ Zara         /ma/fr/category/<id>/products       the JSON behind zara.com/ma cat
 LC Waikiki   sale listing pages (?page=N)        the `catalogModel` JSON embedded in each listing page
 Decathlon    the "Promotions" listing, in a browser   PrestaShop JSON if offered, else the rendered cards
 Magento page category pages (?p=N), in a browser     standard Magento price attributes on each card
+Inditex      /itxrest/ catalog JSON, in a browser    Pull&Bear, Bershka: sale listings, then "see all"
 Any shop     sale pages (given or found on the home page), in a browser: product links with a price
 """
 import html, json, os, re, tempfile
@@ -424,6 +425,214 @@ def zara(store, cursor, sample=False):
     if sample:
         return ("ok", items[:3], None)
     return ("ok", items, {**cursor, "index": index + 1} if index + 1 < len(targets) else None)
+
+
+# ------------------------------------------------------------------ Inditex (Pull&Bear, Bershka…)
+# The other Inditex shops show no products in their HTML: the grid arrives as JSON from their own
+# catalog API under /itxrest/, which refuses servers (Akamai), so these stores run `"via": "browser"`
+# from the PC and the JSON is asked for from inside the shop's tab, like Zara. robots.txt (`*`) only
+# forbids /itxrest/1/marketing/, which is never asked for.
+#   /itxrest/2/catalog/store/{store}                       currency decimals, catalog id, languages
+#   /api/storefront/1/stores/{store}/menu  → grids         (Bershka's newer site)
+#   /itxrest/2/catalog/store/{store}/{catalog}/category    → categories  (older sites; the fallback)
+#   /itxrest/4/…/grid/{id} or /itxrest/3/…/category/{id}/product?showProducts=false → productIds
+#   /itxrest/3/catalog/store/{store}/{catalog}/productsArray?productIds=…   40 at a time
+# Sale listings are read first, then the "see all" listings (for price history), up to max_products.
+# One product per product id, its cheapest colour (as for Zara).
+INDITEX_SALE = re.compile(r"solde|sale\b|promo|special price|prix sp[ée]ciaux|black.?friday|offres?\b|outlet|-\s?\d+\s?%", re.I)
+INDITEX_ALL = re.compile(r"voir tout|tout voir|tout afficher|view all|see all|ver todo|^tout$|^all$", re.I)
+INDITEX_SKIP = re.compile(r"parfum|perfume|fragrance|beaut|cosm[ée]ti|maquillage|make.?up|gift|carte cadeau|"
+                          r"join life|music|editorial|lookbook|nouveaut|new in", re.I)
+INDITEX_BATCH = 40
+INDITEX_SECTIONS = {"WOMAN": "femme", "WOMEN": "femme", "FEMME": "femme", "MAN": "homme", "MEN": "homme",
+                    "HOMME": "homme", "KID": "enfant", "KIDS": "enfant", "ENFANT": "enfant"}
+
+
+def inditex_base(store):
+    return f"https://{store['domain']}"
+
+
+def inditex_menu_targets(menu):
+    """(listing kind, id, trail) for every grid of the menu, skipping the nodes that name themselves."""
+    out = []
+    def walk(node, trail):
+        here = trail + [node.get("name") or ""]
+        content = node.get("content") or {}
+        if content.get("type") == "grid" and content.get("id") and str(content["id"]) != str(node.get("key")):
+            out.append(("grid", str(content["id"]), " / ".join(p for p in here if p)))
+        for child in node.get("children") or []:
+            if isinstance(child, dict):
+                walk(child, here)
+    for node in (menu or {}).get("items") or []:
+        if isinstance(node, dict):
+            walk(node, [])
+    return out
+
+
+def inditex_category_targets(tree):
+    """(listing kind, id, trail) for every leaf category of the older category tree."""
+    out = []
+    def walk(nodes, trail):
+        for c in nodes or []:
+            here = trail + [c.get("name") or ""]
+            subs = c.get("subcategories") or []
+            if subs:
+                walk(subs, here)
+            else:
+                out.append(("category", str(c.get("viewCategoryId") or c.get("id")), " / ".join(p for p in here if p)))
+    walk((tree or {}).get("categories"), [])
+    return out
+
+
+def inditex_pick(targets):
+    """Sale listings first, then "see all" listings; never beauty, gift cards or editorial pages."""
+    sale, everything, seen = [], [], set()
+    for kind, tid, trail in targets:
+        if (kind, tid) in seen or INDITEX_SKIP.search(trail):
+            continue
+        seen.add((kind, tid))
+        last = trail.split(" / ")[-1]
+        if INDITEX_SALE.search(trail):
+            sale.append((kind, tid, trail))
+        elif INDITEX_ALL.search(last.strip()):
+            everything.append((kind, tid, trail))
+    return sale + everything
+
+
+def inditex_money(raw, decimals):
+    if raw in (None, "", "null"):
+        return None
+    try:
+        return round(float(str(raw)) * 10 ** -abs(int(decimals)), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def inditex_image(color, holder, base):
+    for source in (color, holder):
+        image = (source or {}).get("image") or {}
+        stem = image.get("url")
+        if isinstance(stem, str) and stem and base:
+            views = [str(v) for v in image.get("type") or [] if str(v).strip()]
+            url = f"{base.rstrip('/')}{stem if stem.startswith('/') else '/' + stem}_{views[0] if views else '1'}_1_0.jpg"
+            return f"{url}?ts={image['timestamp']}" if image.get("timestamp") else url
+        xmedia = (source or {}).get("xmedia") or []
+        if xmedia and isinstance(xmedia[0], dict) and xmedia[0].get("url"):
+            return xmedia[0]["url"].replace("{width}", "563")
+    return None
+
+
+def inditex_items(store, cursor, products, trail):
+    prefix, decimals, images = store.get("prefix") or "/ma/", cursor["decimals"], cursor["image_base"]
+    items = []
+    for entry in products or []:
+        if not isinstance(entry, dict) or entry.get("id") is None or ("key" in entry and "description" in entry):
+            continue                                     # errors arrive inside the array (Item not found)
+        pid = str(entry["id"])
+        if pid in cursor["seen"]:
+            continue
+        holders = [h for h in entry.get("bundleProductSummaries") or [] if isinstance(h, dict)] or [entry]
+        best = None                                      # (price, old, colour, holder)
+        for holder in holders:
+            for color in ((holder.get("detail") or {}).get("colors") or []):
+                for size in color.get("sizes") or []:
+                    price = inditex_money(size.get("price"), decimals)
+                    if price and (best is None or price < best[0]):
+                        best = (price, inditex_money(size.get("oldPrice"), decimals), color, holder)
+        if best is None:
+            continue
+        price, old, color, holder = best
+        cursor["seen"].add(pid)
+        slug = (holder.get("productUrl") or entry.get("productUrl") or "").strip("/")
+        if store.get("url_style") == "c0p":              # Bershka: /ma/<slug>-c0p<id>.html
+            stem = re.sub(r"-l\d+$", "", slug)
+            path = f"{stem}-c0p{pid}.html" if stem else f"c0p{pid}.html"
+        else:                                            # Pull&Bear: /ma/<slug>-l<reference>
+            path = slug or f"c0p{pid}.html"
+        sizes = color.get("sizes") or []
+        section = (holder.get("sectionNameEN") or holder.get("sectionName") or entry.get("sectionNameEN") or "").upper()
+        items.append(item(
+            store, external_id=pid, handle=slug or None, title=holder.get("name") or entry.get("name"),
+            url=f"{inditex_base(store)}{prefix}{path}", price=price, compare_at=old,
+            in_stock=any(s.get("isBuyable") for s in sizes) or not sizes,
+            image=inditex_image(color, holder, images), brand=store.get("name"),
+            sizes=[s.get("name") for s in sizes if s.get("isBuyable") and s.get("name")],
+            gender=INDITEX_SECTIONS.get(section), gender_hint=gender_in(trail.split(" / ")[0]),
+            text=[holder.get("familyName") or entry.get("familyName"),
+                  holder.get("subFamilyName") or entry.get("subFamilyName"), trail],
+        ))
+    return items
+
+
+def inditex_setup(store, sample):
+    sid, base = store["store_id"], inditex_base(store)
+    result = shop_json(store, f"{base}/itxrest/2/catalog/store/{sid}?languageId=-1&appId=1")
+    if result[0] != "ok":
+        return result
+    config = result[1] if isinstance(result[1], dict) else {}
+    catalog = next((c.get("id") for c in config.get("catalogs") or [] if isinstance(c, dict) and c.get("type") == 1),
+                   None) or store.get("catalog_id")
+    language = next((l.get("id") for l in config.get("supportedLanguages") or []
+                     if isinstance(l, dict) and str(l.get("code") or l.get("localeName") or "").lower().startswith("fr")),
+                    store.get("language_id", -1))
+    details = config.get("details") or {}
+    decimals = (details.get("locale") or {}).get("currencyDecimals")
+    cursor = {"catalog": catalog, "lang": language, "decimals": -2 if decimals is None else decimals,
+              "image_base": details.get("imageBaseUrl") or store.get("image_base") or "",
+              "seen": set(), "index": 0}
+    targets = []
+    menu = shop_json(store, f"{base}/api/storefront/1/stores/{sid}/menu")
+    if menu[0] == "ok":
+        targets = inditex_pick(inditex_menu_targets(menu[1]))
+    if not targets:
+        tree = shop_json(store, f"{base}/itxrest/2/catalog/store/{sid}/{catalog}/category?languageId={language}&typeCatalog=1&appId=1")
+        if tree[0] == "throttled":
+            return tree
+        if tree[0] == "ok":
+            targets = inditex_pick(inditex_category_targets(tree[1]))
+    if not targets:
+        return ("error", "no sale or 'see all' listing found in the shop's menu")
+    print(f"  {sum(1 for t in targets if INDITEX_SALE.search(t[2]))} sale listings, {len(targets)} in all", flush=True)
+    cursor["targets"] = targets[:1] if sample else targets
+    return ("ok", cursor)
+
+
+def inditex(store, cursor, sample=False):
+    if cursor is None:
+        setup = inditex_setup(store, sample)
+        if setup[0] != "ok":
+            return setup
+        cursor = setup[1]
+    sid, base, catalog, lang = store["store_id"], inditex_base(store), cursor["catalog"], cursor["lang"]
+    kind, tid, trail = cursor["targets"][cursor["index"]]
+    following = {**cursor, "index": cursor["index"] + 1} if cursor["index"] + 1 < len(cursor["targets"]) else None
+    if kind == "grid":
+        url = f"{base}/itxrest/4/catalog/store/{sid}/grid/{quote(tid)}?languageId={lang}&appId=1"
+    else:
+        url = f"{base}/itxrest/3/catalog/store/{sid}/{catalog}/category/{tid}/product?languageId={lang}&showProducts=false&appId=1"
+    result = shop_json(store, url)
+    if result[0] == "throttled":
+        return result
+    if result[0] != "ok":
+        return ("ok", [], following) if following and not sample else result   # one broken listing is not fatal
+    data = result[1] if isinstance(result[1], dict) else {}
+    limit = int(store.get("max_products") or 2500)
+    ids = [str(i) for i in data.get("productIds") or data.get("sortedProductIds") or [] if str(i).isdigit()]
+    ids = [i for i in dict.fromkeys(ids) if i not in cursor["seen"]][:max(0, limit - len(cursor["seen"]))]
+    items = []
+    for start in range(0, len(ids), INDITEX_BATCH):
+        batch = ids[start:start + INDITEX_BATCH]
+        answer = shop_json(store, f"{base}/itxrest/3/catalog/store/{sid}/{catalog}/productsArray"
+                                  f"?productIds={','.join(batch)}&languageId={lang}&appId=1")
+        if answer[0] == "throttled":
+            return answer if not items else ("ok", items, cursor)     # keep what we have; retry later
+        if answer[0] == "ok" and isinstance(answer[1], dict):
+            items += inditex_items(store, cursor, answer[1].get("products"), trail)
+        if sample and items:
+            return ("ok", items[:3], None)
+    if len(cursor["seen"]) >= limit:
+        following = None
+    return ("ok", items, following)
 
 
 # ------------------------------------------------------------------ LC Waikiki
@@ -864,7 +1073,7 @@ def browser_cards(store, cursor, sample=False):
 
 ADAPTERS = {"shopify": shopify, "woocommerce": woocommerce, "prestashop": prestashop,
             "magento": magento, "zara": zara, "lcwaikiki": lcwaikiki, "decathlon": decathlon,
-            "magento_page": magento_page, "browser_cards": browser_cards}
+            "magento_page": magento_page, "browser_cards": browser_cards, "inditex": inditex}
 # Platforms that any shop can run on; `--detect` tries these (site-specific readers like zara are skipped).
 GENERIC = ("shopify", "woocommerce", "prestashop", "magento")
 
