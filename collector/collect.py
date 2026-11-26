@@ -15,7 +15,7 @@ Usage (PowerShell: $env:NAME = "value" instead of export):
 It is deliberately slow. Shopify stores share one queue (about one request a minute, slower
 when refused); every other store has its own, faster one. Run it once or twice a day.
 """
-import argparse, json, os, sys, time
+import argparse, json, os, sys, time, traceback
 from datetime import datetime, timezone
 import requests
 
@@ -193,7 +193,13 @@ def main():
         domain = s["domain"]
         pacer.wait()
         print(f"→ {domain}" + (f" ({platforms.label(cursor)})" if cursor else ""))
-        result = platforms.fetch(s, cursor)
+        try:
+            result = platforms.fetch(s, cursor)
+        except Exception as e:                  # a shop answering something unexpected must not stop the others
+            print(f"  ! crashed while reading: {type(e).__name__}: {e}", file=sys.stderr)
+            traceback.print_exc()
+            gave_up[domain] = "crashed"
+            continue
 
         if result[0] == "throttled":
             _, retry_after, detail = result
@@ -216,7 +222,13 @@ def main():
         if a.dry_run:
             print(f"  {len(items)} products")
         elif items:
-            n, changed = save(db, s, items)             # saved page by page: nothing is lost if we stop
+            try:
+                n, changed = save(db, s, items)         # saved page by page: nothing is lost if we stop
+            except Exception as e:
+                print(f"  ! could not save: {type(e).__name__}: {e}", file=sys.stderr)
+                traceback.print_exc()
+                gave_up[domain] = "save failed"
+                continue
             print(f"  {n} products, {changed} price rows written")
         if next_cursor is not None:
             queue.insert(0, (s, next_cursor, 0))        # finish this store before starting another
@@ -236,6 +248,11 @@ def main():
         print(f"  {d:24} {s.get('platform', 'shopify'):12} {totals[d]:5} products  {state}")
     read = sum(1 for d in totals if totals[d])
     print(f"Done: {read}/{len(stores)} stores read.")
+    crashed = [d for d, why in gave_up.items() if why in ("crashed", "save failed")]
+    if crashed:
+        print(f"Crashed (see the traceback above): {', '.join(crashed)}", file=sys.stderr)
+    if stores and not read and not a.dry_run:
+        sys.exit(1)                                     # nothing at all came in: worth a red run
 
 if __name__ == "__main__":
     main()
