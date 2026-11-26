@@ -43,13 +43,35 @@ export interface SupabaseConfig {
   key: string;
 }
 
-async function get<T>({ url, key }: SupabaseConfig, path: string): Promise<T> {
-  const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/${path}`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!response.ok) throw new Error(`Supabase ${response.status} on ${path.split('?')[0]}`);
-  return (await response.json()) as T;
+/** Pauses before each new attempt. The `promos` view is heavy: on a cold cache it can pass the
+ * public role's 3 s statement timeout (HTTP 500), and the very next try usually succeeds. */
+export const RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
+
+export async function get<T>(
+  { url, key }: SupabaseConfig,
+  path: string,
+  delays: number[] = RETRY_DELAYS_MS,
+): Promise<T> {
+  const name = path.split('?')[0];
+  for (let attempt = 0; ; attempt++) {
+    let error: Error;
+    let retryable = true;
+    try {
+      const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/${path}`, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.ok) return (await response.json()) as T;
+      error = new Error(`Supabase ${response.status} on ${name}`);
+      // Other 4xx mean the request itself is wrong: trying again will not help.
+      retryable = response.status >= 500 || response.status === 429;
+    } catch (caught) {
+      error = caught instanceof Error ? caught : new Error(String(caught)); // network error or timeout
+    }
+    if (!retryable || attempt >= delays.length) throw error;
+    console.warn(`[hemza] ${error.message}: trying again in ${delays[attempt] / 1000} s`);
+    await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+  }
 }
 
 /** Only http(s) links are ever rendered: store data is untrusted input. */

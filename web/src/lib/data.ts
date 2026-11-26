@@ -41,6 +41,11 @@ async function load(): Promise<DealFeed> {
     );
   }
 
+  // On the deploy server, demo data must never replace the live site: fail the build instead,
+  // and the previous deployment (with real deals) stays online.
+  if (import.meta.env.HEMZA_REQUIRE_LIVE_DATA === '1') {
+    throw new Error('[hemza] Live deals could not be loaded and HEMZA_REQUIRE_LIVE_DATA=1: not building a demo site.');
+  }
   const demo = buildDemoFeed();
   return {
     deals: demo.deals.sort(byScore),

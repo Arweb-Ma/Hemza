@@ -22,6 +22,9 @@ jobs:
       # Public, read-only values (see web/.env.example).
       SUPABASE_URL: https://tcsjfqkreqceektalogu.supabase.co
       SUPABASE_PUBLISHABLE_KEY: sb_publishable_cCihiXDolnLBydPGaLKm3g_KNX17m2c
+      # Never publish the demo data: if the database cannot be read, the build fails and the
+      # previous deployment (real deals) stays online.
+      HEMZA_REQUIRE_LIVE_DATA: '1'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
