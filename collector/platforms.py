@@ -69,6 +69,16 @@ def get_text(url):
     return ("ok", r.text, r)
 
 
+# Shop themes put these where a product photo should be: a lazy-loading "ghost", a placeholder,
+# the wishlist heart… Better no picture (the site draws one) than the wrong picture.
+NOT_A_PHOTO = re.compile(r"placeholder|wishlist|/static/frontend/|\.svg(?:$|\?)|^data:", re.I)
+
+
+def photo(url):
+    url = (url or "").strip()
+    return url if url.startswith(("http://", "https://")) and not NOT_A_PHOTO.search(url) else None
+
+
 def item(store, *, external_id, title, url, price, compare_at, in_stock, image=None, brand=None,
          sizes=(), handle=None, text=(), gender=None, gender_hint=None):
     """Builds the common product record. `text` is extra wording used only for classification.
@@ -80,7 +90,7 @@ def item(store, *, external_id, title, url, price, compare_at, in_stock, image=N
     gender = gender or guessed
     return {
         "external_id": str(external_id), "handle": handle, "title": title, "brand": brand or None,
-        "gender": gender, "category": category, "image_url": image or None, "product_url": url,
+        "gender": gender, "category": category, "image_url": photo(image), "product_url": url,
         "sizes": [str(s) for s in sizes][:12], "in_stock": bool(in_stock),
         "_price": float(price),
         "_compare_at": float(compare_at) if compare_at and float(compare_at) > float(price) else None,
@@ -508,11 +518,34 @@ def inditex_money(raw, decimals):
         return None
 
 
+def inditex_media(color, holder):
+    """Newer Inditex products (all of Pull&Bear, many of Bershka) keep their photos in detail.xmedia, one
+    entry per colour, with full addresses. Their colour's image.url is then only "/<colour code>"."""
+    code = str((color or {}).get("id") or "")
+    stem = ((color or {}).get("image") or {}).get("url")
+    for entry in ((holder or {}).get("detail") or {}).get("xmedia") or []:
+        if not isinstance(entry, dict) or not (code and str(entry.get("colorCode")) == code or stem and entry.get("path") == stem):
+            continue
+        for group in entry.get("xmediaItems") or []:
+            for media in (group or {}).get("medias") or []:
+                if not isinstance(media, dict) or media.get("clazz") not in (1, "1"):
+                    continue                             # 2 = colour swatch, 3 = close-up of the fabric
+                url = media.get("url") or (media.get("extraInfo") or {}).get("deliveryUrl")
+                if isinstance(url, str) and url.startswith("http"):
+                    return url
+    return None
+
+
 def inditex_image(color, holder, base):
+    found = inditex_media(color, holder)
+    if found:
+        return found
     for source in (color, holder):
         image = (source or {}).get("image") or {}
         stem = image.get("url")
-        if isinstance(stem, str) and stem and base:
+        # A real photo path looks like /2026/I/0/1/p/1688/741/716/1688741716. A bare "/105" is only the
+        # colour code: building an address from it gives some other product's photo (or none at all).
+        if isinstance(stem, str) and stem.strip("/").count("/") >= 3 and base:
             views = [str(v) for v in image.get("type") or [] if str(v).strip()]
             url = f"{base.rstrip('/')}{stem if stem.startswith('/') else '/' + stem}_{views[0] if views else '1'}_1_0.jpg"
             return f"{url}?ts={image['timestamp']}" if image.get("timestamp") else url

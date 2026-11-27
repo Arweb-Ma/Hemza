@@ -849,6 +849,51 @@ def read_all(store, browser):
         platforms._browser = None
 
 
+class InditexImageTest(unittest.TestCase):
+    """Pull&Bear and most new Bershka products: colour image.url is only "/<code>", photos are in xmedia."""
+    BASE = "https://static.pullandbear.net/2/photos"
+
+    @staticmethod
+    def holder(xmedia):
+        return {"detail": {"xmedia": xmedia}}
+
+    @staticmethod
+    def media(url, clazz=1):
+        return {"clazz": clazz, "url": url}
+
+    def test_photo_of_the_right_colour_from_xmedia(self):
+        color = {"id": "105", "image": {"url": "/105", "type": [], "timestamp": "1"}}
+        holder = self.holder([
+            {"colorCode": "104", "path": "/104", "xmediaItems": [{"medias": [self.media("https://x/104-a.jpg")]}]},
+            {"colorCode": "105", "path": "/105", "xmediaItems": [{"medias": [
+                self.media("https://x/105-r.jpg", clazz=2), self.media("https://x/105-a.jpg")]}]}])
+        self.assertEqual(platforms.inditex_image(color, holder, self.BASE), "https://x/105-a.jpg")
+
+    def test_bare_colour_code_never_becomes_an_address(self):
+        color = {"id": "105", "image": {"url": "/105", "type": [], "timestamp": "1"}}
+        self.assertIsNone(platforms.inditex_image(color, self.holder([]), self.BASE))
+
+    def test_older_full_path_still_works(self):
+        color = {"id": "716", "image": {"url": "/2026/I/0/1/p/1688/741/716/1688741716", "type": ["1"]}}
+        self.assertEqual(platforms.inditex_image(color, {}, "https://static.bershka.net/4/photos2"),
+                         "https://static.bershka.net/4/photos2/2026/I/0/1/p/1688/741/716/1688741716_1_1_0.jpg")
+
+
+class PhotoGuardTest(unittest.TestCase):
+    def test_theme_images_are_dropped(self):
+        for bad in ["https://beautysuccess.co/static/frontend/numericway/beautysuccess/fr_FR/images/wishlist.webp",
+                    "https://dfcdn.defacto.com.tr/AssetsV2/dist/img/ghostImages/productCard.svg",
+                    "https://www.marwa.com/static/version1/frontend/x/Magento_Catalog/images/product/placeholder/small_image.jpg",
+                    "data:image/gif;base64,R0lGOD", "", None]:
+            self.assertIsNone(platforms.photo(bad), bad)
+
+    def test_real_photos_are_kept(self):
+        for good in ["https://static.zara.net/assets/public/ffec/5b36/x/01822110046-p/01822110046-p.jpg?ts=1&w=563",
+                     "https://cdn.shopify.com/s/files/1/0590/files/ghost-hoodie.jpg?v=1",
+                     "https://contents.mediadecathlon.com/p748296/1cr1/k$3e3f/prod.jpg?format=auto&f=512x0"]:
+            self.assertEqual(platforms.photo(good), good)
+
+
 class InditexTest(unittest.TestCase):
     STORE = {"name": "Bershka", "domain": "www.bershka.com", "platform": "inditex", "via": "browser",
              "prefix": "/ma/", "url_style": "c0p", "store_id": 45109536, "catalog_id": 1}
