@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://hemza.ma/sitemap-index.xml
+Sitemap: https://reeklam.ma/sitemap-index.xml

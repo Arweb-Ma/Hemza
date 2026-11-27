@@ -3,7 +3,7 @@ Posts the best new deals to a Telegram channel (and prepares captions for Instag
 
   export SUPABASE_URL=... SUPABASE_SERVICE_KEY=...
   export TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHANNEL=@your_channel
-  export SITE_URL=https://hemza.ma     # optional: posts then link to the deal's page on the site
+  export SITE_URL=https://reeklam.ma     # optional: posts then link to the deal's page on the site
   python post_deals.py --min-score 40 --max 5          # post up to 5 deals
   python post_deals.py --review                        # print only, post nothing (manual approval)
   python post_deals.py --include-unverified --max 1 --per-day 6 --between 9-22   # what run.py does

@@ -57,8 +57,8 @@ class PosterTest(unittest.TestCase):
 
     def test_links_go_to_the_site_when_it_is_live(self):
         self.assertEqual(post_deals.link(DEAL), "https://t.ma/p?utm_source=hemza")
-        os.environ["SITE_URL"] = "https://hemza.ma/"
-        self.assertEqual(post_deals.link(DEAL), "https://hemza.ma/promo/7/")
+        os.environ["SITE_URL"] = "https://reeklam.ma/"
+        self.assertEqual(post_deals.link(DEAL), "https://reeklam.ma/promo/7/")
 
     def test_only_new_or_cheaper_verified_deals_are_posted(self):
         deals = [DEAL, {**DEAL, "id": 8}, {**DEAL, "id": 9, "verified": False, "title": "Jean"}, {**DEAL, "id": 10, "price": "650.00"}]

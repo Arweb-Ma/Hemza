@@ -24,7 +24,7 @@ import requests
 
 from classify import classify, gender_in
 
-UA = "HemzaBot/0.1 (+https://hemza.ma/bot; contact@arweb.ma)"
+UA = "ReeklamBot/0.1 (+https://reeklam.ma/bot; contact@arweb.ma)"
 TIMEOUT = 30
 MAX_PAGES = 40
 DIAGNOSTIC_HEADERS = ("retry-after", "server", "cf-mitigated", "cf-ray", "x-shopify-stage", "x-request-id")
