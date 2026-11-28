@@ -7,8 +7,8 @@ export const SITE = {
   description:
     'Reeklam repère chaque jour les vraies baisses de prix sur la mode femme, homme et enfant au Maroc. Historique des prix, fausses promos filtrées.',
   locale: 'fr-MA',
-  /** Set once the channel exists, e.g. 'https://t.me/your_channel'. The button is hidden while null. */
-  telegramUrl: null as string | null,
+  /** Public Telegram channel, shown as a button in the header. Set to null to hide it. */
+  telegramUrl: 'https://t.me/reeklam_ma' as string | null,
 };
 
 /**
