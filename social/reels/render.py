@@ -1,13 +1,27 @@
 """Reeklam reels: 1080x1920, 30 fps, one encoded file per scene, joined with the concat demuxer.
-Usage: python3 render.py [--frames]   (--frames: only draw check frames into check/)"""
-import json, math, os, subprocess, sys
-from PIL import Image, ImageDraw, ImageFont
+Usage: python3 render.py [reel-id ...] [--frames]   (--frames: only draw check frames into check/)
+Product photos: put them in img/ (see fetch_images.py); a scene whose photo is missing falls back to a price chart."""
+import json, math, os, shutil, subprocess, sys
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
 W, H, FPS = 1080, 1920, 30
 HERE = os.path.dirname(os.path.abspath(__file__))
 BG, INK, MUTED, LINE = "#fbf6ef", "#1e1b18", "#6f665d", "#eadfd2"
 ACCENT, ACCENT_SOFT, GREEN, GREEN_SOFT, SURFACE = "#c2562b", "#f6e2d7", "#1f5e4b", "#ddede6", "#ffffff"
-INTER = "/usr/share/fonts/opentype/inter/Inter-{}.otf"
+# Inter (OFL) is bundled in fonts/ so the script also runs on Windows; system copy as fallback
+INTER = os.path.join(HERE, "fonts", "Inter-{}.otf")
+INTER_SYS = "/usr/share/fonts/opentype/inter/Inter-{}.otf"
+
+def ffmpeg_bin():
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:  # pip install imageio-ffmpeg  (ships its own ffmpeg, handy on Windows)
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        raise SystemExit("ffmpeg introuvable : installe ffmpeg ou `pip install imageio-ffmpeg`")
+FFMPEG = None
 
 _cache = {}
 def serif(size, weight=800, opsz=None):
@@ -21,7 +35,8 @@ def serif(size, weight=800, opsz=None):
 def sans(size, weight="SemiBold"):
     key = ("i", size, weight)
     if key not in _cache:
-        _cache[key] = ImageFont.truetype(INTER.format(weight), size)
+        path = INTER.format(weight)
+        _cache[key] = ImageFont.truetype(path if os.path.exists(path) else INTER_SYS.format(weight), size)
     return _cache[key]
 
 # ------------------------------------------------------------------ easing
@@ -39,7 +54,7 @@ def blend(c1, c2, a):
 # ------------------------------------------------------------------ drawing helpers
 def wrap(d, text, font, width):
     lines, cur = [], ""
-    for word in text.split():
+    for word in text.split(" "):  # split on plain spaces only, so "-29\u00a0%" stays together
         trial = (cur + " " + word).strip()
         if d.textlength(trial, font=font) <= width or not cur:
             cur = trial
@@ -70,7 +85,8 @@ def footer_note(d, text):
 
 def dh(v):
     v = float(v)
-    return (f"{v:,.0f}" if v == int(v) else f"{v:,.2f}").replace(",", " ") + " DH"
+    s = f"{v:,.0f}" if v == int(v) else f"{v:,.2f}"
+    return s.replace(",", " ").replace(".", ",") + " DH"  # French: 1 439,50 DH
 
 def strike(d, x1, x2, y, a, width=7, fill=ACCENT):
     if a > 0:
@@ -96,7 +112,7 @@ def chip(d, x, y, text, fill=INK, ink=BG, font=None):
     return x + w + 56
 
 def progress(d, t, dur):
-    d.rectangle((0, 0, int(W * clamp(t / dur)), 10), fill=ACCENT)
+    """Replaced by segments() drawn in build(); kept so the older scene code stays unchanged."""
 
 # ------------------------------------------------------------------ scenes
 def scene_hook(spec):
@@ -264,7 +280,225 @@ def scene_end(spec):
         return img
     return draw
 
-SCENES = {"hook": scene_hook, "deal": scene_deal, "versus": scene_versus, "tips": scene_tips, "end": scene_end}
+# ------------------------------------------------------------------ v2: photos, charts, split stats
+_photos = {}
+def load_photo(rel):
+    """Product photo from img/ (or any path relative to this folder); None when missing."""
+    if not rel:
+        return None
+    if rel not in _photos:
+        path = os.path.join(HERE, rel)
+        try:
+            im = ImageOps.exif_transpose(Image.open(path)).convert("RGBA")
+            _photos[rel] = im
+        except (OSError, ValueError):
+            _photos[rel] = None
+    return _photos[rel]
+
+def rounded_paste(img, tile, xy, radius):
+    mask = Image.new("L", tile.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, tile.size[0] - 1, tile.size[1] - 1), radius, fill=255)
+    if tile.mode == "RGBA":
+        mask = Image.composite(tile.getchannel("A"), Image.new("L", tile.size, 0), mask)
+    img.paste(tile.convert("RGB"), (int(xy[0]), int(xy[1])), mask)
+
+def photo_tile(photo, size, zoom=1.0, pad=0.06, bg=SURFACE):
+    """Product photo 'contained' on a white tile (never cropped), with a gentle zoom."""
+    tw, th = size
+    tile = Image.new("RGBA", size, bg)
+    iw, ih = photo.size
+    s = min(tw * (1 - 2 * pad) / iw, th * (1 - 2 * pad) / ih) * zoom
+    pw, ph = max(1, int(iw * s)), max(1, int(ih * s))
+    pic = photo.resize((pw, ph), Image.LANCZOS)
+    tile.alpha_composite(pic, ((tw - pw) // 2, (th - ph) // 2))
+    return tile
+
+def shadow(img, box, radius, a=1.0, blur=28, offset=18, strength=60):
+    if a <= 0: return
+    x1, y1, x2, y2 = box
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(layer).rounded_rectangle((x1, y1 + offset, x2, y2 + offset), radius, fill=(60, 40, 20, int(strength * a)))
+    img.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur)))
+
+def price_bars(img, box, history, t, start, big=False, on_dark=False, dates=True):
+    """One bar per price check; bars at the old price in a muted tone, after the drop in accent."""
+    x1, y1, x2, y2 = box
+    d = ImageDraw.Draw(img)
+    prices = [float(p) for _, p in history]
+    hi, new = max(prices), prices[-1]
+    n = len(prices)
+    gap = 18 if big else 12
+    bw = (x2 - x1 - gap * (n - 1)) / n
+    base = y2 - (64 if big and dates else 0)
+    top_room = 70 if big else 4
+    full = base - y1 - top_room
+    muted = "#cdbfae" if not on_dark else "#6b625a"
+    for i, p in enumerate(prices):
+        a = ease_out((t - start - 0.07 * i) / 0.35)
+        if a <= 0: continue
+        bx = x1 + i * (bw + gap)
+        h = max(6, full * p / hi * a)
+        fill = ACCENT if p < hi else muted
+        d.rounded_rectangle((bx, base - h, bx + bw, base), 10 if big else 6, fill=fill)
+    if big:
+        f = sans(34, "Bold")
+        for i in (0, n - 1):
+            a = ease_out((t - start - 0.07 * i - 0.25) / 0.3)
+            if a <= 0: continue
+            bx = x1 + i * (bw + gap) + bw / 2
+            h = full * prices[i] / hi
+            text_in(img, (bx, base - h - 52), dh(prices[i]).replace(" DH", ""), f, INK if i == 0 else ACCENT, a, dy=12, anchor="ma")
+            if dates:
+                text_in(img, (bx, base + 18), history[i][0], sans(30, "Medium"), MUTED, a, dy=8, anchor="ma")
+
+def scene_product(spec):
+    """Product photo + price drop + mini price history. Without a photo, the history chart takes the photo's place."""
+    photo = load_photo(spec.get("image"))
+    hist = spec.get("history") or []
+    def draw(t, total):
+        img = Image.new("RGBA", (W, H), BG); d = ImageDraw.Draw(img)
+        header(img, d, t)
+        box = (90, 330, 990, 970)
+        a = appear(t, 0.0, 0.5)
+        dy = (1 - a) * 90
+        b = (box[0], box[1] + dy, box[2], box[3] + dy)
+        shadow(img, b, 44, a)
+        if photo is not None:
+            tile = photo_tile(photo, (box[2] - box[0], box[3] - box[1]), zoom=1.0 + 0.06 * clamp(t / total))
+            if a < 1:
+                tile.putalpha(tile.getchannel("A").point(lambda v: int(v * a)))
+            rounded_paste(img, tile, b[:2], 44)
+        else:
+            d.rounded_rectangle(b, 44, fill=SURFACE, outline=LINE, width=3)
+            if a > 0.6:
+                label = spec.get("history_label", "Son prix à chaque relevé")
+                if hist:
+                    label += f" · {hist[0][0].replace(' nov.', '')} → {hist[-1][0]}"
+                text_in(img, (b[0] + 60, b[1] + 130), label, sans(36, "SemiBold"), MUTED, appear(t, 0.2))
+                if hist:
+                    price_bars(img, (b[0] + 60, b[1] + 220, b[2] - 60, b[3] - 140), hist, t, 0.35, big=True, dates=False)
+        d = ImageDraw.Draw(img)
+        if a > 0.5:
+            chip(d, b[0] + 36, b[1] + 36, spec["brand"])
+            if spec.get("count"):
+                f = sans(32, "Bold"); w = d.textlength(spec["count"], font=f)
+                d.rounded_rectangle((b[2] - 36 - w - 48, b[1] + 36, b[2] - 36, b[1] + 104), 34, fill=(255, 255, 255), outline=LINE, width=2)
+                d.text((b[2] - 36 - (w + 48) / 2, b[1] + 70), spec["count"], font=f, fill=INK, anchor="mm")
+        badge(img, (box[2] - 110, box[3] - 30), f"-{spec['pct']}%", (t - 1.75) / 0.45, ACCENT, 210)
+        # text block (left of Instagram's right-hand buttons)
+        x, y = 90, 1005
+        for line in wrap(d, spec["title"], serif(60, 700, 64), 860)[:2]:
+            text_in(img, (x, y), line, serif(60, 700, 64), INK, appear(t, 0.2)); y += 70
+        if spec.get("who"):
+            text_in(img, (x, y + 8), spec["who"], sans(34, "Medium"), MUTED, appear(t, 0.25)); y += 56
+        y += 18
+        old = dh(spec["old"]); f_old = serif(62, 600, 64)
+        a_old = appear(t, 0.4)
+        text_in(img, (x, y), old, f_old, MUTED, a_old)
+        w_old = d.textlength(old, font=f_old)
+        if a_old >= 1:
+            strike(d, x, x + w_old, y + 40, ease_out((t - 0.9) / 0.3), width=6)
+        if spec.get("old_label"):
+            text_in(img, (x + w_old + 30, y + 22), spec["old_label"], sans(32, "Medium"), MUTED, appear(t, 0.5))
+        k = ease_out((t - 1.0) / 0.85)
+        if t >= 1.0:
+            val = float(spec["new"]) if k >= 1 else round(float(spec["old"]) + (float(spec["new"]) - float(spec["old"])) * k)
+            d.text((x - 4, y + 78), dh(val), font=serif(124, 900, 128), fill=INK)
+        # mini history under the price (only when the photo used the space above)
+        if photo is not None and hist:
+            ya = 1415
+            text_in(img, (x, ya), spec.get("history_label", f"Son prix à nos {len(hist)} relevés"), sans(30, "SemiBold"), GREEN, appear(t, 2.05), dy=14)
+            price_bars(img, (x, ya + 48, 880, ya + 118), hist, t, 2.1)
+        elif spec.get("proof"):
+            a = appear(t, 2.1)
+            if a > 0:
+                layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); ld = ImageDraw.Draw(layer)
+                f = sans(32, "SemiBold"); tw = ld.textlength(spec["proof"], font=f); yy = 1415 + (1 - a) * 20
+                ld.rounded_rectangle((x, yy, x + tw + 48, yy + 62), 31, fill=GREEN_SOFT)
+                ld.text((x + 24, yy + 31), spec["proof"], font=f, fill=GREEN, anchor="lm")
+                layer.putalpha(layer.getchannel("A").point(lambda v: int(v * a))); img.alpha_composite(layer)
+        return img
+    return draw
+
+def scene_split(spec):
+    """'Of the N items showing -X %…' : two counters that split the claim into what is real."""
+    rows = spec["rows"]
+    def draw(t, total):
+        img = Image.new("RGBA", (W, H), BG); d = ImageDraw.Draw(img)
+        header(img, d, t)
+        y = 400
+        for i, line in enumerate(spec["title"]):
+            colour = ACCENT if line.startswith("*") else INK
+            text_in(img, (90, y), line.lstrip("*"), serif(78, 850, 80), colour, appear(t, 0.05 + 0.12 * i)); y += 92
+        y += 50
+        for i, row in enumerate(rows):
+            start = 0.5 + 1.1 * i
+            a = appear(t, start, 0.45)
+            if a <= 0:
+                y += 400; continue
+            fill, ink = (GREEN_SOFT, GREEN) if row.get("tone") == "good" else (ACCENT_SOFT, ACCENT)
+            yy = y + (1 - a) * 50
+            layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); ld = ImageDraw.Draw(layer)
+            ld.rounded_rectangle((60, yy, 900, yy + 360), 44, fill=fill)
+            k = ease_out((t - start - 0.1) / 0.8)
+            ld.text((110, yy + 36), str(round(row["n"] * k)), font=serif(180, 900, 144), fill=ink)
+            fx = sans(42, "Bold"); ty = yy + 70
+            for line in wrap(ld, row["label"], fx, 420):
+                ld.text((440, ty), line, font=fx, fill=INK); ty += 54
+            for j, line in enumerate(wrap(ld, row.get("sub", ""), sans(34, "Medium"), 740)):
+                ld.text((110, yy + 250 + j * 46), line, font=sans(34, "Medium"), fill=MUTED)
+            layer.putalpha(layer.getchannel("A").point(lambda v: int(v * a))); img.alpha_composite(layer)
+            y += 400
+        return img
+    return draw
+
+def scene_hook2(spec):
+    """Hook with a fan of product photos below the headline (or a giant discount figure when no photo is there)."""
+    photos = [p for p in (load_photo(r) for r in spec.get("images", [])) if p is not None]
+    base = scene_hook(spec)
+    def draw(t, total):
+        img = base(t, total)
+        if photos:
+            n = len(photos[:3]); tw, th = 290, 350
+            for i, ph in enumerate(photos[:3]):
+                a = ease_back(clamp((t - 0.6 - 0.15 * i) / 0.5))
+                if a <= 0: continue
+                ang = (-8, 2, 9)[i] if n == 3 else (-6, 6)[i % 2]
+                cx = W / 2 + (i - (n - 1) / 2) * 290
+                cy = 1450 + (1 - a) * 320 + (0, -30, 10)[i % 3]
+                tile = photo_tile(ph, (tw, th), pad=0.08)
+                card = Image.new("RGBA", (tw + 24, th + 24), (255, 255, 255, 255))
+                card.alpha_composite(tile, (12, 12))
+                rot = card.rotate(ang, resample=Image.BICUBIC, expand=True)
+                sh = Image.new("RGBA", rot.size, (0, 0, 0, 0))
+                sh.putalpha(rot.getchannel("A").point(lambda v: int(v * 0.25)))
+                sh = sh.filter(ImageFilter.GaussianBlur(14))
+                img.alpha_composite(sh, (int(cx - rot.size[0] / 2), int(cy - rot.size[1] / 2 + 18)))
+                img.alpha_composite(rot, (int(cx - rot.size[0] / 2), int(cy - rot.size[1] / 2)))
+        elif spec.get("big"):
+            a = appear(t, 0.7, 0.6)
+            text_in(img, (W // 2, 1150), spec["big"], serif(400, 900, 144), ACCENT_SOFT, a, dy=80, anchor="ma")
+        if spec.get("stamp"):
+            a = (t - 1.3) / 0.4
+            if a > 0:
+                badge(img, (W - 200, 860), spec["stamp"], a, INK, 230)
+        return img
+    return draw
+
+SCENES = {"hook": scene_hook, "deal": scene_deal, "versus": scene_versus, "tips": scene_tips, "end": scene_end,
+          "hook2": scene_hook2, "product": scene_product, "split": scene_split}
+
+def segments(img, k, n, t, dur):
+    """Story-style progress: one segment per scene (end card excluded)."""
+    d = ImageDraw.Draw(img)
+    x1, x2, y, gap = 90, W - 90, 150, 12
+    sw = (x2 - x1 - gap * (n - 1)) / n
+    for i in range(n):
+        sx = x1 + i * (sw + gap)
+        d.rounded_rectangle((sx, y, sx + sw, y + 8), 4, fill=LINE)
+        f = 1 if i < k else (clamp(t / dur) if i == k else 0)
+        if f > 0:
+            d.rounded_rectangle((sx, y, sx + max(8, sw * f), y + 8), 4, fill=ACCENT)
 
 # ------------------------------------------------------------------ output
 ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
@@ -272,7 +506,7 @@ ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv4
 
 def render_scene(draw, dur, path, fade_in=0.25):
     tmp = path[:-4] + ".part.mp4"
-    p = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+    p = subprocess.Popen([FFMPEG, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
                           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", *ENC, tmp], stdin=subprocess.PIPE)
     n = int(round(dur * FPS))
     for i in range(n):
@@ -291,8 +525,14 @@ def build(reel, frames_only=False):
     os.makedirs(os.path.join(HERE, "out"), exist_ok=True)
     os.makedirs(os.path.join(HERE, "check"), exist_ok=True)
     parts = []
+    n_seg = sum(1 for sc in reel["scenes"] if sc["type"] != "end")
     for k, sc in enumerate(reel["scenes"]):
-        draw = SCENES[sc["type"]](sc)
+        inner = SCENES[sc["type"]](sc)
+        if sc["type"] != "end":
+            def draw(t, total, inner=inner, k=k):
+                img = inner(t, total); segments(img, k, n_seg, t, total); return img
+        else:
+            draw = inner
         if frames_only:
             t = sc.get("check_at", sc["dur"] - 0.2)
             draw(t, sc["dur"]).convert("RGB").save(os.path.join(HERE, "check", f"{reel['id']}-{k}.jpg"), quality=88)
@@ -308,13 +548,14 @@ def build(reel, frames_only=False):
     out = os.path.join(HERE, "out", f"{reel['id']}.mp4")
     tmp = out[:-4] + ".part.mp4"
     # silent AAC track so Instagram treats it as a normal video; add a trending sound in the app
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
+    subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
                     "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v", "-map", "1:a",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", tmp], check=True)
     os.replace(tmp, out)
     print("wrote", out)
 
 if __name__ == "__main__":
+    FFMPEG = ffmpeg_bin() if "--frames" not in sys.argv else None
     reels = json.load(open(os.path.join(HERE, "reels.json"), encoding="utf-8"))
     only = [a for a in sys.argv[1:] if not a.startswith("--")]
     for r in reels:

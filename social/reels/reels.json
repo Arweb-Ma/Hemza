@@ -1,57 +1,494 @@
 [
-  {"id": "1-jeu-26-aldo-black-friday", "scenes": [
-    {"type": "hook", "dur": 2.8, "kicker": "BLACK FRIDAY", "lines": ["Aldo baisse", "*vraiment", "ses prix"],
-     "sub": "Prix stables du 21 au 25 nov., puis -30 % sur presque tout le 25 nov."},
-    {"type": "deal", "dur": 3.6, "count": "1/3", "brand": "Aldo", "title": "Korra", "who": "Chaussures femme",
-     "old_label": "Prix du 21 au 25 nov.", "old": 1049, "new": 585, "pct": 44, "proof": "Baisse constatée le 25 nov."},
-    {"type": "deal", "dur": 3.6, "count": "2/3", "brand": "Aldo", "title": "Wentz", "who": "Chaussures homme",
-     "old_label": "Prix du 21 au 25 nov.", "old": 1399, "new": 980, "pct": 30, "proof": "Baisse constatée le 25 nov."},
-    {"type": "deal", "dur": 3.6, "count": "3/3", "brand": "Aldo", "title": "Maeliabag", "who": "Sac femme",
-     "old_label": "Prix du 21 au 25 nov.", "old": 699, "new": 490, "pct": 30, "proof": "Baisse constatée le 25 nov."},
-    {"type": "end", "dur": 2.6, "small": "Prix relevés sur aldoshoes.ma le 25 nov. 2026 · ils peuvent changer"}
-  ]},
-  {"id": "2-ven-27-fausse-promo", "scenes": [
-    {"type": "hook", "dur": 2.6, "kicker": "BLACK FRIDAY", "lines": ["Ce « -52 % »", "*ne bouge", "*jamais"],
-     "sub": "Exemple relevé cette semaine sur un site de mode au Maroc."},
-    {"type": "versus", "dur": 5.4, "check_at": 5.2, "item": "Pantalon jogging", "shown_old": 349, "price": 169, "shown_pct": 52,
-     "history_label": "Son prix à nos 4 relevés (21 – 24 nov.)", "checks": 4, "verdict": "Toujours 169 DH."},
-    {"type": "tips", "dur": 4.6, "check_at": 4.4, "title": "3 réflexes", "tips": [
-      "Compare au prix habituel, pas au prix barré.",
-      "Méfie-toi des sites toujours « en promo ».",
-      "Regarde l'historique : Reeklam le fait pour toi."]},
-    {"type": "end", "dur": 2.6, "small": "Exemple anonymisé · prix relevés du 21 au 24 nov. 2026"}
-  ]},
-  {"id": "3-sam-28-homme", "scenes": [
-    {"type": "hook", "dur": 2.8, "kicker": "HOMME", "lines": ["Chemises et", "pantalons :", "*vraies baisses"],
-     "sub": "Chez LC Waikiki, prix comparés à ceux de la semaine dernière."},
-    {"type": "deal", "dur": 3.6, "count": "1/3", "brand": "LC Waikiki", "title": "Chemise rayée coupe regular", "who": "Homme",
-     "old_label": "Prix du 21 au 23 nov.", "old": 179, "new": 99, "pct": 45, "proof": "Baisse constatée le 24 nov."},
-    {"type": "deal", "dur": 3.6, "count": "2/3", "brand": "LC Waikiki", "title": "Pantalon coupe régulière", "who": "Homme",
-     "old_label": "Prix du 21 au 23 nov.", "old": 219, "new": 139, "pct": 37, "proof": "Baisse constatée le 24 nov."},
-    {"type": "deal", "dur": 3.6, "count": "3/3", "brand": "LC Waikiki", "title": "Chemise Oxford rayée regular fit", "who": "Homme",
-     "old_label": "Prix du 21 au 23 nov.", "old": 199, "new": 129, "pct": 35, "proof": "Baisse constatée le 24 nov."},
-    {"type": "end", "dur": 2.6, "small": "Prix relevés sur lcwaikiki.ma le 25 nov. 2026 · ils peuvent changer"}
-  ]},
-  {"id": "4-dim-29-femme", "scenes": [
-    {"type": "hook", "dur": 2.8, "kicker": "FEMME", "lines": ["3 vraies baisses", "*à 149 DH"],
-     "sub": "Manteau, robe, pantalon : comparés à leur prix d'avant."},
-    {"type": "deal", "dur": 3.6, "count": "1/3", "brand": "Marwa", "title": "Manteau ceinturé à col fourrure", "who": "Femme",
-     "old_label": "Prix relevé le 21 nov.", "old": 229, "new": 149, "pct": 35, "proof": "Baisse constatée le 21 nov."},
-    {"type": "deal", "dur": 3.6, "count": "2/3", "brand": "LC Waikiki", "title": "Robe chemise trapèze", "who": "Femme",
-     "old_label": "Prix du 21 au 24 nov.", "old": 199, "new": 149, "pct": 25, "proof": "Baisse constatée le 24 nov."},
-    {"type": "deal", "dur": 3.6, "count": "3/3", "brand": "LC Waikiki", "title": "Pantalon jambe large taille élastiquée", "who": "Femme",
-     "old_label": "Prix du 21 au 24 nov.", "old": 199, "new": 149, "pct": 25, "proof": "Baisse constatée le 24 nov."},
-    {"type": "end", "dur": 2.6, "small": "Prix relevés le 25 nov. 2026 · ils peuvent changer"}
-  ]},
-  {"id": "5-lun-30-enfant", "scenes": [
-    {"type": "hook", "dur": 2.8, "kicker": "ENFANT", "lines": ["Pour les filles :", "*moins de 70 DH"],
-     "sub": "Chez LC Waikiki, prix comparés à ceux de la semaine dernière."},
-    {"type": "deal", "dur": 3.6, "count": "1/3", "brand": "LC Waikiki", "title": "Sweat-shirt à volants brodé", "who": "Fille",
-     "old_label": "Prix du 21 au 23 nov.", "old": 99, "new": 69, "pct": 30, "proof": "Baisse constatée le 24 nov."},
-    {"type": "deal", "dur": 3.6, "count": "2/3", "brand": "LC Waikiki", "title": "Robe en gabardine à volants", "who": "Fille",
-     "old_label": "Prix du 21 au 23 nov.", "old": 79, "new": 59, "pct": 25, "proof": "Baisse constatée le 24 nov."},
-    {"type": "deal", "dur": 3.6, "count": "3/3", "brand": "LC Waikiki", "title": "T-shirt brodé col rond", "who": "Fille",
-     "old_label": "Prix du 21 au 23 nov.", "old": 29, "new": 19, "pct": 34, "proof": "Baisse constatée le 24 nov."},
-    {"type": "end", "dur": 2.6, "small": "Prix relevés sur lcwaikiki.ma le 25 nov. 2026 · ils peuvent changer"}
-  ]}
+ {
+  "id": "1-jeu-26-aldo-black-friday",
+  "scenes": [
+   {
+    "type": "hook",
+    "dur": 2.8,
+    "kicker": "BLACK FRIDAY",
+    "lines": [
+     "Aldo baisse",
+     "*vraiment",
+     "ses prix"
+    ],
+    "sub": "Prix stables du 21 au 25 nov., puis -30 % sur presque tout le 25 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "1/3",
+    "brand": "Aldo",
+    "title": "Korra",
+    "who": "Chaussures femme",
+    "old_label": "Prix du 21 au 25 nov.",
+    "old": 1049,
+    "new": 585,
+    "pct": 44,
+    "proof": "Baisse constatée le 25 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "2/3",
+    "brand": "Aldo",
+    "title": "Wentz",
+    "who": "Chaussures homme",
+    "old_label": "Prix du 21 au 25 nov.",
+    "old": 1399,
+    "new": 980,
+    "pct": 30,
+    "proof": "Baisse constatée le 25 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "3/3",
+    "brand": "Aldo",
+    "title": "Maeliabag",
+    "who": "Sac femme",
+    "old_label": "Prix du 21 au 25 nov.",
+    "old": 699,
+    "new": 490,
+    "pct": 30,
+    "proof": "Baisse constatée le 25 nov."
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés sur aldoshoes.ma le 25 nov. 2026 · ils peuvent changer"
+   }
+  ]
+ },
+ {
+  "id": "2-ven-27-fausse-promo",
+  "scenes": [
+   {
+    "type": "hook",
+    "dur": 2.6,
+    "kicker": "BLACK FRIDAY",
+    "lines": [
+     "Ce « -52 % »",
+     "*ne bouge",
+     "*jamais"
+    ],
+    "sub": "Exemple relevé cette semaine sur un site de mode au Maroc."
+   },
+   {
+    "type": "versus",
+    "dur": 5.4,
+    "check_at": 5.2,
+    "item": "Pantalon jogging",
+    "shown_old": 349,
+    "price": 169,
+    "shown_pct": 52,
+    "history_label": "Son prix à nos 4 relevés (21 – 24 nov.)",
+    "checks": 4,
+    "verdict": "Toujours 169 DH."
+   },
+   {
+    "type": "tips",
+    "dur": 4.6,
+    "check_at": 4.4,
+    "title": "3 réflexes",
+    "tips": [
+     "Compare au prix habituel, pas au prix barré.",
+     "Méfie-toi des sites toujours « en promo ».",
+     "Regarde l'historique : Reeklam le fait pour toi."
+    ]
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Exemple anonymisé · prix relevés du 21 au 24 nov. 2026"
+   }
+  ]
+ },
+ {
+  "id": "3-sam-28-homme",
+  "scenes": [
+   {
+    "type": "hook",
+    "dur": 2.8,
+    "kicker": "HOMME",
+    "lines": [
+     "Chemises et",
+     "pantalons :",
+     "*vraies baisses"
+    ],
+    "sub": "Chez LC Waikiki, prix comparés à ceux de la semaine dernière."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "1/3",
+    "brand": "LC Waikiki",
+    "title": "Chemise rayée coupe regular",
+    "who": "Homme",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 179,
+    "new": 99,
+    "pct": 45,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "2/3",
+    "brand": "LC Waikiki",
+    "title": "Pantalon coupe régulière",
+    "who": "Homme",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 219,
+    "new": 139,
+    "pct": 37,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "3/3",
+    "brand": "LC Waikiki",
+    "title": "Chemise Oxford rayée regular fit",
+    "who": "Homme",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 199,
+    "new": 129,
+    "pct": 35,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés sur lcwaikiki.ma le 25 nov. 2026 · ils peuvent changer"
+   }
+  ]
+ },
+ {
+  "id": "4-dim-29-femme",
+  "scenes": [
+   {
+    "type": "hook",
+    "dur": 2.8,
+    "kicker": "FEMME",
+    "lines": [
+     "3 vraies baisses",
+     "*à 149 DH"
+    ],
+    "sub": "Manteau, robe, pantalon : comparés à leur prix d'avant."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "1/3",
+    "brand": "Marwa",
+    "title": "Manteau ceinturé à col fourrure",
+    "who": "Femme",
+    "old_label": "Prix relevé le 21 nov.",
+    "old": 229,
+    "new": 149,
+    "pct": 35,
+    "proof": "Baisse constatée le 21 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "2/3",
+    "brand": "LC Waikiki",
+    "title": "Robe chemise trapèze",
+    "who": "Femme",
+    "old_label": "Prix du 21 au 24 nov.",
+    "old": 199,
+    "new": 149,
+    "pct": 25,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "3/3",
+    "brand": "LC Waikiki",
+    "title": "Pantalon jambe large taille élastiquée",
+    "who": "Femme",
+    "old_label": "Prix du 21 au 24 nov.",
+    "old": 199,
+    "new": 149,
+    "pct": 25,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés le 25 nov. 2026 · ils peuvent changer"
+   }
+  ]
+ },
+ {
+  "id": "5-lun-30-enfant",
+  "scenes": [
+   {
+    "type": "hook",
+    "dur": 2.8,
+    "kicker": "ENFANT",
+    "lines": [
+     "Pour les filles :",
+     "*moins de 70 DH"
+    ],
+    "sub": "Chez LC Waikiki, prix comparés à ceux de la semaine dernière."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "1/3",
+    "brand": "LC Waikiki",
+    "title": "Sweat-shirt à volants brodé",
+    "who": "Fille",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 99,
+    "new": 69,
+    "pct": 30,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "2/3",
+    "brand": "LC Waikiki",
+    "title": "Robe en gabardine à volants",
+    "who": "Fille",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 79,
+    "new": 59,
+    "pct": 25,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "deal",
+    "dur": 3.6,
+    "count": "3/3",
+    "brand": "LC Waikiki",
+    "title": "T-shirt brodé col rond",
+    "who": "Fille",
+    "old_label": "Prix du 21 au 23 nov.",
+    "old": 29,
+    "new": 19,
+    "pct": 34,
+    "proof": "Baisse constatée le 24 nov."
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés sur lcwaikiki.ma le 25 nov. 2026 · ils peuvent changer"
+   }
+  ]
+ },
+ {
+  "id": "6-sam-28-lacoste-50",
+  "scenes": [
+   {
+    "type": "hook2",
+    "dur": 3.0,
+    "kicker": "BLACK FRIDAY · LACOSTE",
+    "lines": [
+     "137 articles",
+     "affichent",
+     "*-50 %"
+    ],
+    "sub": "On a vérifié, prix par prix.",
+    "big": "-50%",
+    "stamp": "Vrai ?",
+    "images": [
+     "img/lacoste-2754.jpg",
+     "img/lacoste-4771.jpg",
+     "img/lacoste-4755.jpg"
+    ],
+    "image_urls": [
+     "https://lacoste.ma/16047-home_default/polo-l1212-original-classic-fit-en-petit-pique.jpg",
+     "https://lacoste.ma/24504-home_default/sneakers-spinor-homme.jpg",
+     "https://lacoste.ma/24110-home_default/petit-sac-lenglen-en-cuir.jpg"
+    ]
+   },
+   {
+    "type": "split",
+    "dur": 4.6,
+    "check_at": 4.4,
+    "title": [
+     "Sur ces 137",
+     "*« -50 % »…"
+    ],
+    "rows": [
+     {
+      "n": 34,
+      "tone": "good",
+      "label": "sont vraiment à moitié prix",
+      "sub": "par rapport à leur prix du 21 au 26 nov."
+     },
+     {
+      "n": 103,
+      "tone": "bad",
+      "label": "étaient déjà en promo avant",
+      "sub": "Vraie baisse cette semaine : environ -29 %."
+     }
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "1/3",
+    "brand": "Lacoste",
+    "title": "Polo L.12.12 Original",
+    "who": "Le polo iconique, Petit Piqué",
+    "old": 1249,
+    "new": 624.5,
+    "pct": 50,
+    "old_label": "du 21 au 26 nov.",
+    "proof": "Baisse constatée le 26 nov.",
+    "image": "img/lacoste-2754.jpg",
+    "image_url": "https://lacoste.ma/16047-home_default/polo-l1212-original-classic-fit-en-petit-pique.jpg",
+    "history_label": "Son prix à nos 9 relevés",
+    "history": [
+     [
+      "21 nov.",
+      1249
+     ],
+     [
+      "22",
+      1249
+     ],
+     [
+      "23",
+      1249
+     ],
+     [
+      "24",
+      1249
+     ],
+     [
+      "25",
+      1249
+     ],
+     [
+      "26",
+      1249
+     ],
+     [
+      "26",
+      624.5
+     ],
+     [
+      "27",
+      624.5
+     ],
+     [
+      "28 nov.",
+      624.5
+     ]
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "2/3",
+    "brand": "Lacoste",
+    "title": "Sneakers Spinor",
+    "who": "Homme",
+    "old": 1599,
+    "new": 799.5,
+    "pct": 50,
+    "old_label": "du 21 au 26 nov.",
+    "proof": "Baisse constatée le 26 nov.",
+    "image": "img/lacoste-4771.jpg",
+    "image_url": "https://lacoste.ma/24504-home_default/sneakers-spinor-homme.jpg",
+    "history_label": "Son prix à nos 8 relevés",
+    "history": [
+     [
+      "21 nov.",
+      1599
+     ],
+     [
+      "22",
+      1599
+     ],
+     [
+      "23",
+      1599
+     ],
+     [
+      "24",
+      1599
+     ],
+     [
+      "26",
+      1599
+     ],
+     [
+      "26",
+      799.5
+     ],
+     [
+      "27",
+      799.5
+     ],
+     [
+      "28 nov.",
+      799.5
+     ]
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "3/3",
+    "brand": "Lacoste",
+    "title": "Petit sac Lenglen en cuir",
+    "who": "Sac bandoulière",
+    "old": 2879,
+    "new": 1439.5,
+    "pct": 50,
+    "old_label": "du 21 au 26 nov.",
+    "proof": "Baisse constatée le 26 nov.",
+    "image": "img/lacoste-4755.jpg",
+    "image_url": "https://lacoste.ma/24110-home_default/petit-sac-lenglen-en-cuir.jpg",
+    "history_label": "Son prix à nos 8 relevés",
+    "history": [
+     [
+      "21 nov.",
+      2879
+     ],
+     [
+      "22",
+      2879
+     ],
+     [
+      "23",
+      2879
+     ],
+     [
+      "24",
+      2879
+     ],
+     [
+      "26",
+      2879
+     ],
+     [
+      "26",
+      1439.5
+     ],
+     [
+      "27",
+      1439.5
+     ],
+     [
+      "28 nov.",
+      1439.5
+     ]
+    ]
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés sur lacoste.ma du 21 au 28 nov. 2026 · ils peuvent changer"
+   }
+  ]
+ }
 ]
