@@ -9,14 +9,20 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('get', () => {
   it('tries again after a 500 (statement timeout) and returns the data', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(reply(500)).mockResolvedValueOnce(reply(200, [{ id: 1 }]));
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(reply(500))
+      .mockResolvedValueOnce(reply(200, [{ id: 1 }]));
     vi.stubGlobal('fetch', fetch);
     await expect(get(config, 'promos?select=*', [0, 0])).resolves.toEqual([{ id: 1 }]);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('tries again after a network error', async () => {
-    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed')).mockResolvedValueOnce(reply(200));
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(reply(200));
     vi.stubGlobal('fetch', fetch);
     await expect(get(config, 'promos', [0])).resolves.toEqual([]);
   });
