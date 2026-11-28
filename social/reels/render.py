@@ -302,10 +302,25 @@ def rounded_paste(img, tile, xy, radius):
         mask = Image.composite(tile.getchannel("A"), Image.new("L", tile.size, 0), mask)
     img.paste(tile.convert("RGB"), (int(xy[0]), int(xy[1])), mask)
 
-def photo_tile(photo, size, zoom=1.0, pad=0.06, bg=SURFACE):
-    """Product photo 'contained' on a white tile (never cropped), with a gentle zoom."""
+def edge_colour(photo):
+    """Average colour of the photo's left and right edges, so the tile blends with studio backgrounds."""
+    im = photo.convert("RGB"); w, h = im.size
+    cols = [im.crop((0, 0, 4, h)), im.crop((w - 4, 0, w, h))]
+    px = [c.resize((1, 1), Image.BOX).getpixel((0, 0)) for c in cols]
+    return tuple(sum(v) // len(px) for v in zip(*px)) + (255,)
+
+def photo_tile(photo, size, zoom=1.0, pad=0.06, bg=None):
+    """Product photo 'contained' on a tile (never cropped), with a gentle zoom."""
     tw, th = size
-    tile = Image.new("RGBA", size, bg)
+    if bg == "blur":  # stretch the photo's own edge columns sideways: matches gradient studio backdrops
+        im = photo.convert("RGB"); w, h = im.size
+        k = th / h
+        left = im.crop((0, 0, 3, h)).resize((tw // 2 + 1, th), Image.BILINEAR)
+        right = im.crop((w - 3, 0, w, h)).resize((tw - tw // 2, th), Image.BILINEAR)
+        back = Image.new("RGB", size); back.paste(left, (0, 0)); back.paste(right, (tw // 2, 0))
+        tile = back.filter(ImageFilter.GaussianBlur(6)).convert("RGBA")
+    else:
+        tile = Image.new("RGBA", size, bg or edge_colour(photo))
     iw, ih = photo.size
     s = min(tw * (1 - 2 * pad) / iw, th * (1 - 2 * pad) / ih) * zoom
     pw, ph = max(1, int(iw * s)), max(1, int(ih * s))
@@ -364,7 +379,7 @@ def scene_product(spec):
         b = (box[0], box[1] + dy, box[2], box[3] + dy)
         shadow(img, b, 44, a)
         if photo is not None:
-            tile = photo_tile(photo, (box[2] - box[0], box[3] - box[1]), zoom=1.0 + 0.06 * clamp(t / total))
+            tile = photo_tile(photo, (box[2] - box[0], box[3] - box[1]), zoom=1.0 + 0.06 * clamp(t / total), pad=0.0, bg="blur")
             if a < 1:
                 tile.putalpha(tile.getchannel("A").point(lambda v: int(v * a)))
             rounded_paste(img, tile, b[:2], 44)
@@ -384,10 +399,19 @@ def scene_product(spec):
                 f = sans(32, "Bold"); w = d.textlength(spec["count"], font=f)
                 d.rounded_rectangle((b[2] - 36 - w - 48, b[1] + 36, b[2] - 36, b[1] + 104), 34, fill=(255, 255, 255), outline=LINE, width=2)
                 d.text((b[2] - 36 - (w + 48) / 2, b[1] + 70), spec["count"], font=f, fill=INK, anchor="mm")
+        if spec.get("claim"):
+            a_c = appear(t, 1.3, 0.4)
+            if a_c > 0:
+                layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); ld = ImageDraw.Draw(layer)
+                f = sans(32, "SemiBold"); tw = ld.textlength(spec["claim"], font=f)
+                cx, cy = b[0] + 36, b[3] - 104 + (1 - a_c) * 16
+                ld.rounded_rectangle((cx, cy, cx + tw + 48, cy + 64), 32, fill=(255, 255, 255, 235), outline=LINE, width=2)
+                ld.text((cx + 24, cy + 32), spec["claim"], font=f, fill=MUTED, anchor="lm")
+                layer.putalpha(layer.getchannel("A").point(lambda v: int(v * a_c))); img.alpha_composite(layer)
         badge(img, (box[2] - 110, box[3] - 30), f"-{spec['pct']}%", (t - 1.75) / 0.45, ACCENT, 210)
         # text block (left of Instagram's right-hand buttons)
         x, y = 90, 1005
-        for line in wrap(d, spec["title"], serif(60, 700, 64), 860)[:2]:
+        for line in wrap(d, spec["title"], serif(60, 700, 64), 720)[:1]:
             text_in(img, (x, y), line, serif(60, 700, 64), INK, appear(t, 0.2)); y += 70
         if spec.get("who"):
             text_in(img, (x, y + 8), spec["who"], sans(34, "Medium"), MUTED, appear(t, 0.25)); y += 56
@@ -441,10 +465,12 @@ def scene_split(spec):
             layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); ld = ImageDraw.Draw(layer)
             ld.rounded_rectangle((60, yy, 900, yy + 360), 44, fill=fill)
             k = ease_out((t - start - 0.1) / 0.8)
-            ld.text((110, yy + 36), str(round(row["n"] * k)), font=serif(180, 900, 144), fill=ink)
+            fn = serif(180 if row["n"] < 1000 else 150, 900, 144)
+            ld.text((110, yy + 36 + (0 if row["n"] < 1000 else 22)), f"{round(row['n'] * k):,}".replace(",", " "), font=fn, fill=ink)
+            lx = 110 + ld.textlength(f"{row['n']:,}".replace(",", " "), font=fn) + 50
             fx = sans(42, "Bold"); ty = yy + 70
-            for line in wrap(ld, row["label"], fx, 420):
-                ld.text((440, ty), line, font=fx, fill=INK); ty += 54
+            for line in wrap(ld, row["label"], fx, 860 - lx):
+                ld.text((lx, ty), line, font=fx, fill=INK); ty += 54
             for j, line in enumerate(wrap(ld, row.get("sub", ""), sans(34, "Medium"), 740)):
                 ld.text((110, yy + 250 + j * 46), line, font=sans(34, "Medium"), fill=MUTED)
             layer.putalpha(layer.getchannel("A").point(lambda v: int(v * a))); img.alpha_composite(layer)

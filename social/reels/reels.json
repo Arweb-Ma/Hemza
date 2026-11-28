@@ -490,5 +490,217 @@
     "small": "Prix relevés sur lacoste.ma du 21 au 28 nov. 2026 · ils peuvent changer"
    }
   ]
+ },
+ {
+  "id": "7-sam-28-lcw-vraies-baisses",
+  "scenes": [
+   {
+    "type": "hook2",
+    "dur": 3.0,
+    "kicker": "BLACK FRIDAY · LC WAIKIKI",
+    "lines": [
+     "4 819 articles",
+     "« en promo »…",
+     "*vraiment ?"
+    ],
+    "sub": "On a suivi chaque prix depuis le 21 nov.",
+    "big": "%",
+    "images": [
+     "img/lcw-14476.jpg",
+     "img/lcw-6985.jpg",
+     "img/lcw-17685.jpg"
+    ],
+    "image_urls": [
+     "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/9139279/v3/l_20262-w6bt16z8-3db-99-76-96-188_a.jpg",
+     "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/9030150/v2/l_20262-w65587z8-hmk-80-62-91-176_a.jpg",
+     "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/15276781/v1/l_20262-w6ee90z1-hpn_u.jpg"
+    ]
+   },
+   {
+    "type": "split",
+    "dur": 4.6,
+    "check_at": 4.4,
+    "title": [
+     "Sur ces 4 819",
+     "*« promos »…"
+    ],
+    "rows": [
+     {
+      "n": 466,
+      "tone": "good",
+      "label": "ont vraiment baissé cette semaine",
+      "sub": "Baisse constatée le 24 nov."
+     },
+     {
+      "n": 3420,
+      "tone": "bad",
+      "label": "n'ont pas bougé d'un dirham",
+      "sub": "Même prix du 21 au 28 nov."
+     }
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "1/3",
+    "brand": "LC Waikiki",
+    "title": "Pantalon coupe régulière",
+    "who": "Homme",
+    "old": 269,
+    "new": 179,
+    "pct": 33,
+    "old_label": "du 21 au 23 nov.",
+    "claim": "Barré sur le site : 349 DH",
+    "proof": "Baisse constatée le 24 nov.",
+    "image": "img/lcw-14476.jpg",
+    "image_url": "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/9139279/v3/l_20262-w6bt16z8-3db-99-76-96-188_a.jpg",
+    "history_label": "Son prix à nos 8 relevés",
+    "history": [
+     [
+      "21 nov.",
+      269
+     ],
+     [
+      "22",
+      269
+     ],
+     [
+      "23",
+      269
+     ],
+     [
+      "24",
+      179
+     ],
+     [
+      "25",
+      179
+     ],
+     [
+      "26",
+      179
+     ],
+     [
+      "27",
+      179
+     ],
+     [
+      "28 nov.",
+      179
+     ]
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "2/3",
+    "brand": "LC Waikiki",
+    "title": "Robe chemise trapèze",
+    "who": "Femme · mélange de modal",
+    "old": 199,
+    "new": 149,
+    "pct": 25,
+    "old_label": "du 21 au 24 nov.",
+    "claim": "Barré sur le site : 329 DH",
+    "proof": "Baisse constatée le 24 nov.",
+    "image": "img/lcw-6985.jpg",
+    "image_url": "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/9030150/v2/l_20262-w65587z8-hmk-80-62-91-176_a.jpg",
+    "history_label": "Son prix à nos 9 relevés",
+    "history": [
+     [
+      "21 nov.",
+      199
+     ],
+     [
+      "22",
+      199
+     ],
+     [
+      "23",
+      199
+     ],
+     [
+      "24",
+      199
+     ],
+     [
+      "24",
+      149
+     ],
+     [
+      "25",
+      149
+     ],
+     [
+      "26",
+      149
+     ],
+     [
+      "27",
+      149
+     ],
+     [
+      "28 nov.",
+      149
+     ]
+    ]
+   },
+   {
+    "type": "product",
+    "dur": 4.0,
+    "count": "3/3",
+    "brand": "LC Waikiki",
+    "title": "Sweat à volants brodé",
+    "who": "Fille",
+    "old": 99,
+    "new": 69,
+    "pct": 30,
+    "old_label": "du 21 au 23 nov.",
+    "claim": "Barré sur le site : 199 DH",
+    "proof": "Baisse constatée le 24 nov.",
+    "image": "img/lcw-17685.jpg",
+    "image_url": "https://img-lcwaikiki.mncdn.com/mnpadding/600/800/ffffff/pim/productimages/20262/15276781/v1/l_20262-w6ee90z1-hpn_u.jpg",
+    "history_label": "Son prix à nos 8 relevés",
+    "history": [
+     [
+      "21 nov.",
+      99
+     ],
+     [
+      "22",
+      99
+     ],
+     [
+      "23",
+      99
+     ],
+     [
+      "24",
+      69
+     ],
+     [
+      "25",
+      69
+     ],
+     [
+      "26",
+      69
+     ],
+     [
+      "27",
+      69
+     ],
+     [
+      "28 nov.",
+      69
+     ]
+    ]
+   },
+   {
+    "type": "end",
+    "dur": 2.6,
+    "small": "Prix relevés sur lcwaikiki.ma du 21 au 28 nov. 2026 · ils peuvent changer"
+   }
+  ]
  }
 ]
